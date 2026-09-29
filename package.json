@@ -1,0 +1,19 @@
+{
+  "name": "dabrik-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Classificados locais para comprar e vender na sua região",
+  "scripts": {
+    "dev": "node backend/src/server.js",
+    "start": "node backend/src/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.2"
+  }
+}

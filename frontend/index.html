@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#087f3b" />
+    <meta
+      name="description"
+      content="Compre e venda produtos usados perto de você. Publique anúncios grátis na DaBrik."
+    />
+    <meta property="og:title" content="DaBrik — Brike fácil é no DaBrik." />
+    <meta
+      property="og:description"
+      content="Encontre ofertas e anúncios de pessoas da sua região."
+    />
+    <title>DaBrik — Classificados da sua região</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="announcement">
+      <span>Compre e venda perto de você.</span
+      ><a href="/anunciar" data-link>Anuncie grátis <span>→</span></a>
+    </div>
+    <header class="header">
+      <a class="brand" href="/" data-link aria-label="DaBrik início"
+        ><span class="brand-mark">D</span
+        ><span
+          >DaBrik<span class="brand-dot">.</span
+          ><small>Classificados da sua região</small></span
+        ></a
+      >
+      <nav class="desktop-nav">
+        <a href="/produtos" data-link>Explorar anúncios</a>
+      </nav>
+      <div class="header-actions">
+        <a class="seller-link" href="/anunciar" data-link>＋ Anunciar</a>
+        <button id="account-btn" class="account-btn">Entrar</button
+        ><button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
+          ☰
+        </button>
+      </div>
+    </header>
+    <main id="app" aria-live="polite">
+      <div class="loading-shell">
+        <div class="skeleton hero-sk"></div>
+        <div class="skeleton row-sk"></div>
+      </div>
+    </main>
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <a class="brand brand-light" href="/" data-link
+            ><span class="brand-mark">D</span
+            ><span
+              >DaBrik<span class="brand-dot">.</span
+              ><small>Classificados da sua região</small></span
+            ></a
+          >
+          <p>Compre e venda perto de você.<br />A DaBrik conecta.</p>
+        </div>
+        <div>
+          <strong>Explore</strong><a href="/produtos" data-link>Anúncios</a
+          ><a href="/anunciar" data-link>Quero anunciar</a>
+        </div>
+        <div>
+          <strong>DaBrik</strong
+          ><a href="/como-funciona" data-link>Como funciona</a
+          ><a href="/painel" data-link>Minha conta</a
+          ><a href="/admin" data-link>Administração</a>
+        </div>
+        <div>
+          <strong>Negocie com cuidado</strong
+          ><span>Converse com quem anunciou</span
+          ><span>Confira o produto antes de pagar</span
+          ><span>Combine a entrega diretamente</span>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 DaBrik. Feito para conectar.</span
+        ><span>Classificados da sua região</span>
+      </div>
+    </footer>
+    <div id="toast" class="toast" role="status"></div>
+    <div id="modal-root"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
