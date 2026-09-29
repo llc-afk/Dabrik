@@ -41,3 +41,11 @@ Esta versão salva os dados em arquivos locais e funciona em uma única instânc
 Cadastro não confirma a identidade do usuário por e-mail ou SMS. Antes de anunciar para o público, adicione verificação de contato e moderação contra spam e anúncios impróprios.
 
 Em produção, configure `NODE_ENV=production` e `JWT_SECRET` com uma chave aleatória longa. Não publique `.env`, `data/` ou dados pessoais no repositório.
+
+## GitHub Pages
+
+O workflow `.github/workflows/pages.yml` publica somente o conteúdo de `frontend/` no endereço `https://llc-afk.github.io/Dabrik/`. Nas configurações do repositório, abra **Settings → Pages** e selecione **GitHub Actions** como origem de publicação.
+
+O GitHub Pages serve apenas os arquivos do frontend; ele não executa Node.js. Para usar cadastro, login e anúncios no site publicado, hospede este backend em um serviço Node com armazenamento persistente. Em **Settings → Secrets and variables → Actions → Variables**, crie a variável `DABRIK_API_BASE_URL` com a origem HTTPS pública da API (por exemplo, `https://api.seu-dominio.com`, sem `/api`). No ambiente do backend, defina `CORS_ORIGIN=https://llc-afk.github.io`, `NODE_ENV=production` e um `JWT_SECRET` seguro. Não use um secret no frontend para a URL pública da API e nunca exponha a chave JWT.
+
+Sem uma URL de API configurada, o frontend publicado exibe uma mensagem de backend desconectado; ele não simula anúncios ou contas. O uso local continua usando `http://localhost:3000` e a API local.

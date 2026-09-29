@@ -104,7 +104,32 @@ const authenticate = (req, res, next) => {
 };
 
 app.disable("x-powered-by");
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGIN || "http://localhost:3000,http://127.0.0.1:3000,https://llc-afk.github.io")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+app.use((req, res, next) => {
+  const origin = req.get("Origin");
+  if (origin && !allowedOrigins.has(origin)) {
+    return res.status(403).json({ error: "Origem não autorizada." });
+  }
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  }
+  if (origin && req.method === "OPTIONS") return res.status(204).end();
+  next();
+});
 app.use(express.json({ limit: "12mb" }));
 app.use(
   "/api",

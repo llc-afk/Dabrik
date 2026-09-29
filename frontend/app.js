@@ -1,4 +1,7 @@
-const API = "/api";
+const siteConfig = window.DABRIK_CONFIG || {};
+const BASE_PATH = normalizeBasePath(siteConfig.basePath || "/");
+const API_BASE_URL = String(siteConfig.apiBaseUrl || "").replace(/\/+$/, "");
+const API = API_BASE_URL ? `${API_BASE_URL}/api` : `${BASE_PATH}api`.replace(/\/+/g, "/");
 const categories = [
   "Automóveis",
   "Casa e jardim",
@@ -15,6 +18,27 @@ const categories = [
 ];
 let products = [];
 let toastTimer;
+let apiProblem = "";
+
+function normalizeBasePath(value) {
+  const path = `/${String(value).replace(/^\/+|\/+$/g, "")}/`;
+  return path === "//" ? "/" : path;
+}
+
+function imageUrl(value) {
+  try {
+    return new URL(value, API_BASE_URL || window.location.origin).href;
+  } catch {
+    return "";
+  }
+}
+
+function apiUnavailableMessage() {
+  if (location.hostname.endsWith("github.io") && !API_BASE_URL) {
+    return "O backend ainda não está conectado. Publique o servidor DaBrik e configure a variável DABRIK_API_BASE_URL no GitHub.";
+  }
+  return "Não foi possível conectar ao servidor DaBrik. Tente novamente em instantes.";
+}
 
 const money = (value) =>
   Number(value || 0).toLocaleString("pt-BR", {
@@ -48,6 +72,9 @@ function token() {
 }
 
 async function api(path, options = {}) {
+  if (location.hostname.endsWith("github.io") && !API_BASE_URL) {
+    throw new Error(apiUnavailableMessage());
+  }
   const headers = { ...(options.headers || {}) };
   if (options.body) headers["Content-Type"] = "application/json";
   if (token()) headers.Authorization = `Bearer ${token()}`;
@@ -66,10 +93,28 @@ function emptyState(title, message, action = true) {
   return `<div class="empty"><strong>${escapeHTML(title)}</strong><p>${escapeHTML(message)}</p>${action ? '<a class="btn-primary" data-link href="/anunciar">Anunciar grátis</a>' : ""}</div>`;
 }
 
+function connectionNotice() {
+  return apiProblem
+    ? `<div class="container"><div class="notice api-notice">${escapeHTML(apiProblem)}</div></div>`
+    : "";
+}
+
+async function loadProducts(path) {
+  try {
+    const result = await api(path);
+    apiProblem = "";
+    return result;
+  } catch (error) {
+    apiProblem =
+      error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message;
+    return { items: [] };
+  }
+}
+
 function productCard(product) {
   const photo = product.images?.[0];
   const image = photo
-    ? `<img src="${escapeHTML(photo)}" alt="${escapeHTML(product.title)}" loading="lazy">`
+    ? `<img src="${escapeHTML(imageUrl(photo))}" alt="${escapeHTML(product.title)}" loading="lazy">`
     : '<div class="no-photo">Sem foto</div>';
   return `<article class="product-card"><a class="product-link" data-link href="/produto/${encodeURIComponent(product.id)}"><div class="product-image">${image}<span class="badge">${escapeHTML(product.category)}</span></div><div class="product-info"><h3 class="product-title">${escapeHTML(product.title)}</h3><div class="price-row"><span class="price">${money(product.price)}</span></div><div class="loc">⌖ ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</div></div></a></article>`;
 }
@@ -89,7 +134,7 @@ function searchForm(id, values = {}) {
 
 function home() {
   const recent = products.slice(0, 8);
-  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Encontre o que precisa.<br><em>Venda o que não usa.</em></h1><p class="hero-copy">Anúncios gratuitos para comprar e vender perto de você.</p>${searchForm("home-search")}<a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a></div><div class="hero-art"><div class="community-card"><strong>DaBrik</strong><span>Gente da sua região, negociando direto.</span></div></div></div></section><section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
+  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Encontre o que precisa.<br><em>Venda o que não usa.</em></h1><p class="hero-copy">Anúncios gratuitos para comprar e vender perto de você.</p>${searchForm("home-search")}<a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a></div><div class="hero-art"><div class="community-card"><strong>DaBrik</strong><span>Gente da sua região, negociando direto.</span></div></div></div></section>${connectionNotice()}<section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
 }
 
 function catalog() {
@@ -101,7 +146,7 @@ function catalog() {
   const filtered = products.filter(
     (product) => !category || product.category === category,
   );
-  return `${pageTop("Anúncios", "Encontre ofertas de pessoas e negócios da sua região.")}
+  return `${pageTop("Anúncios", "Encontre ofertas de pessoas e negócios da sua região.")}${connectionNotice()}
     <section class="container catalog-page">${searchForm("catalog-search", { q: query, city })}
     <div class="catalog-filters"><label>Categoria <select id="catalog-category"><option value="">Todas</option>${categories.map((item) => `<option ${item === category ? "selected" : ""}>${escapeHTML(item)}</option>`).join("")}</select></label><label>Preço mínimo <input id="catalog-min" type="number" min="0" value="${escapeHTML(params.get("min") || "")}" placeholder="R$ 0"></label><label>Preço máximo <input id="catalog-max" type="number" min="0" value="${escapeHTML(params.get("max") || "")}" placeholder="Sem limite"></label><label>Ordenar por <select id="catalog-sort"><option value="recent" ${sort === "recent" ? "selected" : ""}>Mais recentes</option><option value="low-price" ${sort === "low-price" ? "selected" : ""}>Menor preço</option><option value="high-price" ${sort === "high-price" ? "selected" : ""}>Maior preço</option></select></label><button class="btn-primary" id="filter-button">Filtrar anúncios</button></div>
     <p class="catalog-count" id="result-count">${filtered.length} anúncio${filtered.length === 1 ? "" : "s"}</p><div id="catalog-results">${productGrid(filtered)}</div></section>`;
@@ -111,14 +156,14 @@ async function detail(id) {
   let product;
   try {
     product = (await api(`/products/${encodeURIComponent(id)}`)).product;
-  } catch {
-    return `${pageTop("Anúncio indisponível", "Este anúncio pode ter sido removido ou pausado.")}<div class="container">${emptyState("Não encontramos esse anúncio.", "Volte aos anúncios e procure outra oferta.", false)}</div>`;
+  } catch (error) {
+    return `${pageTop("Anúncio indisponível", "Este anúncio pode ter sido removido ou pausado.")}<div class="container"><div class="notice api-notice">${escapeHTML(error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message)}</div>${emptyState("Não foi possível abrir este anúncio.", "Volte aos anúncios e tente novamente.", false)}</div>`;
   }
   const images = product.images?.length
     ? product.images
         .map(
           (image) =>
-            `<img src="${escapeHTML(image)}" alt="${escapeHTML(product.title)}">`,
+            `<img src="${escapeHTML(imageUrl(image))}" alt="${escapeHTML(product.title)}">`,
         )
         .join("")
     : '<div class="no-photo detail-no-photo">Anúncio sem foto</div>';
@@ -155,22 +200,26 @@ async function listingForm() {
     product = mine.items.find((item) => item.id === editingId) || null;
   }
   const value = (key) => escapeHTML(product?.[key] ?? "");
-  return `${pageTop(product ? "Editar anúncio" : "Anuncie grátis", "Publique fotos, preço e descrição para pessoas da sua região.")}<section class="container post-container"><div class="content-panel"><form id="listing-form" class="form-grid" data-id="${value("id")}"><div class="field span-2"><label>Título do anúncio</label><input required name="title" minlength="4" maxlength="100" value="${value("title")}" placeholder="Ex.: Bicicleta aro 29 em ótimo estado"></div><div class="field"><label>Categoria</label><select required name="category">${categories.map((category) => `<option ${product?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></div><div class="field"><label>Preço (R$)</label><input required name="price" type="number" min="0" step="0.01" value="${value("price")}" placeholder="0,00"></div><div class="field"><label>Cidade</label><input required name="city" maxlength="80" value="${value("city")}" placeholder="Sua cidade"></div><div class="field"><label>Estado</label><select required name="state">${["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"].map((state) => `<option ${product?.state === state ? "selected" : ""}>${state}</option>`).join("")}</select></div><div class="field span-2"><label>Descrição</label><textarea required name="description" minlength="10" maxlength="3000" placeholder="Conte o estado do produto, medidas e outras informações importantes.">${value("description")}</textarea></div><div class="field span-2"><label>Fotos (até 5, JPG/PNG/WebP)</label><input id="listing-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="image-preview" class="image-preview">${(product?.images || []).map((image) => `<img src="${escapeHTML(image)}" alt="Foto do anúncio atual">`).join("")}</div><small>Fotos são reduzidas para carregar mais rápido. Cada anúncio aceita até 5.</small></div><label class="consent-check span-2"><input type="checkbox" name="sharePhone" ${product?.sharePhone !== false ? "checked" : ""}> Mostrar meu WhatsApp (${escapeHTML(user?.phone || "")}) neste anúncio para as pessoas interessadas.</label><div class="span-2"><button class="btn-primary">${product ? "Salvar alterações" : "Publicar anúncio grátis"}</button><p id="listing-error" class="notice" hidden></p></div></form></div></section>`;
+  return `${pageTop(product ? "Editar anúncio" : "Anuncie grátis", "Publique fotos, preço e descrição para pessoas da sua região.")}<section class="container post-container"><div class="content-panel"><form id="listing-form" class="form-grid" data-id="${value("id")}"><div class="field span-2"><label>Título do anúncio</label><input required name="title" minlength="4" maxlength="100" value="${value("title")}" placeholder="Ex.: Bicicleta aro 29 em ótimo estado"></div><div class="field"><label>Categoria</label><select required name="category">${categories.map((category) => `<option ${product?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></div><div class="field"><label>Preço (R$)</label><input required name="price" type="number" min="0" step="0.01" value="${value("price")}" placeholder="0,00"></div><div class="field"><label>Cidade</label><input required name="city" maxlength="80" value="${value("city")}" placeholder="Sua cidade"></div><div class="field"><label>Estado</label><select required name="state">${["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"].map((state) => `<option ${product?.state === state ? "selected" : ""}>${state}</option>`).join("")}</select></div><div class="field span-2"><label>Descrição</label><textarea required name="description" minlength="10" maxlength="3000" placeholder="Conte o estado do produto, medidas e outras informações importantes.">${value("description")}</textarea></div><div class="field span-2"><label>Fotos (até 5, JPG/PNG/WebP)</label><input id="listing-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="image-preview" class="image-preview">${(product?.images || []).map((image) => `<img src="${escapeHTML(imageUrl(image))}" alt="Foto do anúncio atual">`).join("")}</div><small>Fotos são reduzidas para carregar mais rápido. Cada anúncio aceita até 5.</small></div><label class="consent-check span-2"><input type="checkbox" name="sharePhone" ${product?.sharePhone !== false ? "checked" : ""}> Mostrar meu WhatsApp (${escapeHTML(user?.phone || "")}) neste anúncio para as pessoas interessadas.</label><div class="span-2"><button class="btn-primary">${product ? "Salvar alterações" : "Publicar anúncio grátis"}</button><p id="listing-error" class="notice" hidden></p></div></form></div></section>`;
 }
 
 async function accountPage() {
   if (!token())
     return `${pageTop("Minha conta", "Entre para ver seus anúncios.")}<div class="container">${emptyState("Acesse sua conta para continuar.", "Crie e acompanhe seus anúncios em um só lugar.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/entrar">Entrar</a><a class="account-btn" data-link href="/cadastro">Criar conta</a></p></div>`;
-  const result = await api("/my/products").catch(() => ({ items: [] }));
+  const result = await api("/my/products").catch((error) => {
+    apiProblem =
+      error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message;
+    return { items: [] };
+  });
   const items = result.items || [];
-  return `${pageTop("Meus anúncios", "Edite, pause, reative ou marque seus anúncios como vendidos.")}<section class="container account-listings"><div class="section-head"><h2 class="section-title">Olá, ${escapeHTML(getUser()?.name || "anunciante")}</h2><a class="btn-primary" data-link href="/anunciar">＋ Novo anúncio</a></div>${items.length ? `<div class="my-listings">${items.map((product) => `<article class="my-listing"><div class="my-listing-photo">${product.images?.[0] ? `<img src="${escapeHTML(product.images[0])}" alt="">` : "Sem foto"}</div><div><strong>${escapeHTML(product.title)}</strong><p>${money(product.price)} · ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</p><span class="status-pill ${product.status.toLowerCase()}">${product.status === "ACTIVE" ? "Publicado" : product.status === "PAUSED" ? "Pausado" : "Vendido"}</span></div><div class="my-listing-actions"><a class="text-link" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar</a><button class="text-link" data-action="status" data-status="${product.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}" data-id="${escapeHTML(product.id)}">${product.status === "ACTIVE" ? "Pausar" : "Reativar"}</button><button class="text-link" data-action="status" data-status="SOLD" data-id="${escapeHTML(product.id)}">Marcar vendido</button><button class="danger-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir</button></div></article>`).join("")}</div>` : emptyState("Você ainda não publicou anúncios.", "Publique gratuitamente e encontre compradores na sua região.")}<button id="logout-btn" class="text-link logout-button">Sair da conta</button></section>`;
+  return `${connectionNotice()}${pageTop("Meus anúncios", "Edite, pause, reative ou marque seus anúncios como vendidos.")}<section class="container account-listings"><div class="section-head"><h2 class="section-title">Olá, ${escapeHTML(getUser()?.name || "anunciante")}</h2><a class="btn-primary" data-link href="/anunciar">＋ Novo anúncio</a></div>${items.length ? `<div class="my-listings">${items.map((product) => `<article class="my-listing"><div class="my-listing-photo">${product.images?.[0] ? `<img src="${escapeHTML(imageUrl(product.images[0]))}" alt="">` : "Sem foto"}</div><div><strong>${escapeHTML(product.title)}</strong><p>${money(product.price)} · ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</p><span class="status-pill ${product.status.toLowerCase()}">${product.status === "ACTIVE" ? "Publicado" : product.status === "PAUSED" ? "Pausado" : "Vendido"}</span></div><div class="my-listing-actions"><a class="text-link" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar</a><button class="text-link" data-action="status" data-status="${product.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}" data-id="${escapeHTML(product.id)}">${product.status === "ACTIVE" ? "Pausar" : "Reativar"}</button><button class="text-link" data-action="status" data-status="SOLD" data-id="${escapeHTML(product.id)}">Marcar vendido</button><button class="danger-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir</button></div></article>`).join("")}</div>` : emptyState("Você ainda não publicou anúncios.", "Publique gratuitamente e encontre compradores na sua região.")}<button id="logout-btn" class="text-link logout-button">Sair da conta</button></section>`;
 }
 
 async function render() {
-  const path = decodeURI(location.pathname);
+  const path = decodeURI(routePath());
   let html;
   if (path === "/") {
-    const result = await api("/products").catch(() => ({ items: [] }));
+    const result = await loadProducts("/products");
     products = result.items || [];
     html = home();
   } else if (path === "/produtos") {
@@ -183,7 +232,7 @@ async function render() {
       max: params.get("max") || "",
       sort: params.get("sort") || "recent",
     });
-    const result = await api(`/products?${query}`).catch(() => ({ items: [] }));
+    const result = await loadProducts(`/products?${query}`);
     products = result.items || [];
     html = catalog();
   } else if (path.startsWith("/produto/")) {
@@ -211,8 +260,27 @@ function updateAccountButton() {
 }
 
 function navigate(url) {
-  history.pushState({}, "", url);
+  history.pushState({}, "", addBasePath(url));
   render();
+}
+
+function routePath() {
+  const pathname = location.pathname;
+  if (BASE_PATH === "/") return pathname || "/";
+  if (pathname === BASE_PATH.slice(0, -1)) return "/";
+  if (pathname.startsWith(BASE_PATH)) {
+    return `/${pathname.slice(BASE_PATH.length)}`;
+  }
+  return pathname || "/";
+}
+
+function addBasePath(url) {
+  const target = new URL(url, `${location.origin}${BASE_PATH}`);
+  let pathname = target.pathname;
+  if (BASE_PATH !== "/" && !pathname.startsWith(BASE_PATH)) {
+    pathname = `${BASE_PATH}${pathname.replace(/^\/+/, "")}`;
+  }
+  return `${pathname}${target.search}${target.hash}`;
 }
 
 function routeFromSearch(form) {
