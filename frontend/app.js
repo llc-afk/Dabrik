@@ -305,13 +305,14 @@ async function compressImage(file) {
   let blob = await new Promise((resolve) =>
     canvas.toBlob(resolve, "image/jpeg", quality),
   );
-  while (blob && blob.size > 900_000 && quality > 0.4) {
+  // Keep five base64-encoded photos below Vercel's 4.5 MB function request cap.
+  while (blob && blob.size > 550_000 && quality > 0.4) {
     quality -= 0.1;
     blob = await new Promise((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", quality),
     );
   }
-  if (!blob || blob.size > 1_000_000)
+  if (!blob || blob.size > 600_000)
     throw new Error("Esta foto ficou muito grande. Escolha outra.");
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

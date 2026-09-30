@@ -9,9 +9,18 @@ const { z } = require("zod");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const database = require("./database");
+const blobStorage = require("./blob-storage");
 
 const app = express();
 const root = path.join(__dirname, "../..");
+const usesDatabase = Boolean(process.env.DATABASE_URL);
+if (process.env.NODE_ENV === "production" && !usesDatabase) {
+  throw new Error("Configure DATABASE_URL para iniciar o DaBrik em produção.");
+}
+if (usesDatabase && !process.env.BLOB_READ_WRITE_TOKEN && process.env.NODE_ENV === "production") {
+  throw new Error("Configure BLOB_READ_WRITE_TOKEN para armazenar fotos em produção.");
+}
 const dataDir = path.join(root, "data");
 const imageDir = path.join(root, "uploads");
 const dataFile = path.join(dataDir, "marketplace.json");
@@ -31,17 +40,15 @@ const categories = [
   "Outros",
 ];
 
-fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-fs.chmodSync(dataDir, 0o700);
-fs.mkdirSync(imageDir, { recursive: true });
-
-if (!fs.existsSync(dataFile)) {
-  fs.writeFileSync(
-    dataFile,
-    JSON.stringify({ users: [], products: [] }, null, 2),
-  );
+if (!usesDatabase) {
+  fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dataDir, 0o700);
+  fs.mkdirSync(imageDir, { recursive: true });
+  if (!fs.existsSync(dataFile)) {
+    fs.writeFileSync(dataFile, JSON.stringify({ users: [], products: [] }, null, 2));
+  }
+  fs.chmodSync(dataFile, 0o600);
 }
-fs.chmodSync(dataFile, 0o600);
 
 const secret =
   process.env.JWT_SECRET ||
@@ -61,7 +68,7 @@ if (secret.length < 32) {
   throw new Error("JWT_SECRET precisa ter pelo menos 32 caracteres.");
 }
 
-function readStore() {
+function readLocalStore() {
   return JSON.parse(fs.readFileSync(dataFile, "utf8"));
 }
 
@@ -72,6 +79,10 @@ function saveStore(store) {
   });
   fs.renameSync(temporaryFile, dataFile);
   fs.chmodSync(dataFile, 0o600);
+}
+
+async function readStore() {
+  return usesDatabase ? database.readStore() : readLocalStore();
 }
 
 function publicUser(user) {
@@ -130,7 +141,7 @@ app.use((req, res, next) => {
   if (origin && req.method === "OPTIONS") return res.status(204).end();
   next();
 });
-app.use(express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "4.2mb" }));
 app.use(
   "/api",
   rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: true }),
@@ -151,20 +162,21 @@ const registerLimit = rateLimit({
 });
 app.use("/uploads", express.static(imageDir, { maxAge: "1d" }));
 
-app.get("/api/health", (_req, res) =>
+app.get("/api/health", async (_req, res) => {
+  const store = await readStore();
   res.json({
     status: "ok",
-    database: "local-file",
-    listings: readStore().products.length,
-  }),
-);
+    database: usesDatabase ? "postgresql" : "local-file",
+    listings: store.products.length,
+  });
+});
 
 app.get("/api/categories", (_req, res) =>
   res.json({ items: categories.map((name) => ({ name })) }),
 );
 
-app.get("/api/products", (req, res) => {
-  const store = readStore();
+app.get("/api/products", async (req, res) => {
+  const store = await readStore();
   const query = String(req.query.q || "")
     .trim()
     .toLocaleLowerCase("pt-BR");
@@ -207,8 +219,8 @@ app.get("/api/products", (req, res) => {
   res.json({ items, total: items.length });
 });
 
-app.get("/api/products/:id", (req, res) => {
-  const store = readStore();
+app.get("/api/products/:id", async (req, res) => {
+  const store = await readStore();
   const product = store.products.find(
     (item) => item.id === req.params.id && item.status === "ACTIVE",
   );
@@ -229,10 +241,6 @@ app.post("/api/auth/register", registerLimit, async (req, res, next) => {
       .parse(req.body);
     const email = data.email.toLowerCase();
     const passwordHash = await bcrypt.hash(data.password, 12);
-    const store = readStore();
-    if (store.users.some((user) => user.email === email)) {
-      return res.status(409).json({ error: "Este e-mail já está cadastrado." });
-    }
     const user = {
       id: crypto.randomUUID(),
       name: data.name,
@@ -241,8 +249,18 @@ app.post("/api/auth/register", registerLimit, async (req, res, next) => {
       passwordHash,
       createdAt: new Date().toISOString(),
     };
-    store.users.push(user);
-    saveStore(store);
+    if (usesDatabase) {
+      if (!(await database.createUser(user))) {
+        return res.status(409).json({ error: "Este e-mail já está cadastrado." });
+      }
+    } else {
+      const store = readLocalStore();
+      if (store.users.some((item) => item.email === email)) {
+        return res.status(409).json({ error: "Este e-mail já está cadastrado." });
+      }
+      store.users.push(user);
+      saveStore(store);
+    }
     const token = jwt.sign({ sub: user.id }, secret, {
       expiresIn: "7d",
       issuer: "dabrik",
@@ -264,10 +282,9 @@ app.post("/api/auth/login", loginLimit, async (req, res, next) => {
         password: z.string().min(1).max(128),
       })
       .parse(req.body);
-    const store = readStore();
-    const user = store.users.find(
-      (item) => item.email === data.email.toLowerCase(),
-    );
+    const user = usesDatabase
+      ? await database.findUserByEmail(data.email.toLowerCase())
+      : readLocalStore().users.find((item) => item.email === data.email.toLowerCase());
     if (!user || !(await bcrypt.compare(data.password, user.passwordHash))) {
       return res.status(401).json({ error: "E-mail ou senha inválidos." });
     }
@@ -289,14 +306,16 @@ app.post("/api/auth/login", loginLimit, async (req, res, next) => {
   }
 });
 
-app.get("/api/auth/me", authenticate, (req, res) => {
-  const user = readStore().users.find((item) => item.id === req.user.sub);
+app.get("/api/auth/me", authenticate, async (req, res) => {
+  const user = usesDatabase
+    ? await database.findUserById(req.user.sub)
+    : readLocalStore().users.find((item) => item.id === req.user.sub);
   if (!user) return res.status(404).json({ error: "Conta não encontrada." });
   res.json({ user: { ...publicUser(user), email: user.email } });
 });
 
-app.get("/api/my/products", authenticate, (req, res) => {
-  const store = readStore();
+app.get("/api/my/products", authenticate, async (req, res) => {
+  const store = await readStore();
   const items = store.products
     .filter((product) => product.ownerId === req.user.sub)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -322,7 +341,7 @@ const productSchema = z.object({
   sharePhone: z.boolean().default(false),
 });
 
-function saveImages(images) {
+function saveLocalImages(images) {
   return images.map((image) => {
     const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(
       image,
@@ -361,30 +380,39 @@ function saveImages(images) {
   });
 }
 
-app.post("/api/products", authenticate, (req, res, next) => {
+app.post("/api/products", authenticate, async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
-    const store = readStore();
+    const store = usesDatabase ? null : readLocalStore();
+    const id = crypto.randomUUID();
     const product = {
-      id: crypto.randomUUID(),
+      id,
       ...data,
-      images: saveImages(data.images),
+      images: usesDatabase
+        ? await blobStorage.saveImages(data.images, id)
+        : saveLocalImages(data.images),
       ownerId: req.user.sub,
       status: "ACTIVE",
       createdAt: new Date().toISOString(),
     };
-    store.products.push(product);
-    saveStore(store);
-    res.status(201).json({ product: publicProduct(product, store) });
+    if (usesDatabase) {
+      await database.createProduct(product);
+      const current = await readStore();
+      res.status(201).json({ product: publicProduct(product, current) });
+    } else {
+      store.products.push(product);
+      saveStore(store);
+      res.status(201).json({ product: publicProduct(product, store) });
+    }
   } catch (error) {
     next(error);
   }
 });
 
-app.put("/api/products/:id", authenticate, (req, res, next) => {
+app.put("/api/products/:id", authenticate, async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
-    const store = readStore();
+    const store = await readStore();
     const index = store.products.findIndex(
       (item) => item.id === req.params.id && item.ownerId === req.user.sub,
     );
@@ -392,50 +420,72 @@ app.put("/api/products/:id", authenticate, (req, res, next) => {
       return res.status(404).json({ error: "Anúncio não encontrado." });
     const previous = store.products[index];
     const newImages = data.images.length
-      ? saveImages(data.images)
+      ? usesDatabase
+        ? await blobStorage.saveImages(data.images, previous.id)
+        : saveLocalImages(data.images)
       : previous.images;
-    store.products[index] = { ...previous, ...data, images: newImages };
+    const updated = { ...previous, ...data, images: newImages };
+    if (usesDatabase) {
+      const found = await database.updateProduct(req.params.id, req.user.sub, updated);
+      if (!found) return res.status(404).json({ error: "Anúncio não encontrado." });
+      if (data.images.length) {
+        await blobStorage.deleteImages(previous.images).catch((error) => console.error(error));
+      }
+      const latest = await readStore();
+      return res.json({ product: publicProduct(updated, latest) });
+    }
+    store.products[index] = updated;
     saveStore(store);
     if (data.images.length) {
-      for (const image of previous.images) {
-        fs.rmSync(path.join(imageDir, path.basename(image)), { force: true });
-      }
+      for (const image of previous.images) fs.rmSync(path.join(imageDir, path.basename(image)), { force: true });
     }
-    res.json({ product: publicProduct(store.products[index], store) });
+    res.json({ product: publicProduct(updated, store) });
   } catch (error) {
     next(error);
   }
 });
 
-app.patch("/api/products/:id/status", authenticate, (req, res) => {
+app.patch("/api/products/:id/status", authenticate, async (req, res) => {
   const status = z
     .enum(["ACTIVE", "PAUSED", "SOLD"])
     .safeParse(req.body.status);
   if (!status.success)
     return res.status(400).json({ error: "Status inválido." });
-  const store = readStore();
+  const store = await readStore();
   const product = store.products.find(
     (item) => item.id === req.params.id && item.ownerId === req.user.sub,
   );
   if (!product)
     return res.status(404).json({ error: "Anúncio não encontrado." });
+  if (usesDatabase) {
+    const updated = await database.updateProductStatus(req.params.id, req.user.sub, status.data);
+    if (!updated) return res.status(404).json({ error: "Anúncio não encontrado." });
+  } else {
+    product.status = status.data;
+    saveStore(store);
+  }
   product.status = status.data;
-  saveStore(store);
   res.json({ product });
 });
 
-app.delete("/api/products/:id", authenticate, (req, res) => {
-  const store = readStore();
+app.delete("/api/products/:id", authenticate, async (req, res) => {
+  const store = await readStore();
   const product = store.products.find(
     (item) => item.id === req.params.id && item.ownerId === req.user.sub,
   );
   if (!product)
     return res.status(404).json({ error: "Anúncio não encontrado." });
-  store.products = store.products.filter((item) => item.id !== product.id);
-  saveStore(store);
-  for (const image of product.images) {
-    const filename = path.basename(image);
-    fs.rmSync(path.join(imageDir, filename), { force: true });
+  if (usesDatabase) {
+    const deleted = await database.deleteProduct(product.id, req.user.sub);
+    if (!deleted) return res.status(404).json({ error: "Anúncio não encontrado." });
+    await blobStorage.deleteImages(product.images).catch((error) => console.error(error));
+  } else {
+    store.products = store.products.filter((item) => item.id !== product.id);
+    saveStore(store);
+    for (const image of product.images) {
+      const filename = path.basename(image);
+      fs.rmSync(path.join(imageDir, filename), { force: true });
+    }
   }
   res.status(204).end();
 });
