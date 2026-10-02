@@ -460,7 +460,7 @@ function bindPage() {
     ?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
-      const register = location.pathname === "/cadastro";
+      const register = routePath() === "/cadastro";
       const errorBox = document.querySelector("#auth-error");
       const button = form.querySelector("button");
       button.disabled = true;
