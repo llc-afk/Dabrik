@@ -51,7 +51,7 @@ async function uploadLegacyImage(value, productId, index) {
   }
   const objectPath = `dabrik/products/${productId}/legacy-${index}.${ext || "bin"}`;
   const stored = await put(objectPath, buffer, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     allowOverwrite: true,
     contentType: type,

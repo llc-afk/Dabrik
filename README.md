@@ -23,7 +23,7 @@ Com `DATABASE_URL`, o backend usa PostgreSQL. As tabelas são criadas automatica
 - `users`: id, nome, e-mail único, telefone, hash da senha e data de criação.
 - `products`: dono, título, descrição, categoria, preço, cidade, estado, URLs das imagens (array ordenado), compartilhamento de telefone, status e data.
 
-Não há favoritos, pedidos ou transações implementados no projeto. As fotos de novos anúncios são validadas pelo backend e enviadas para um bucket público do Vercel Blob; a API salva suas URLs no campo `products.images`. O frontend continua recebendo e enviando o mesmo campo `images`.
+Não há favoritos, pedidos ou transações implementados no projeto. As fotos de novos anúncios são validadas pelo backend e enviadas para a store privada do Vercel Blob; a API salva suas URLs no campo `products.images`. Para exibir fotos de anúncios, `GET /api/blob` valida os caminhos DaBrik e transmite a imagem sem expor o token da store. O frontend continua recebendo e enviando o mesmo campo `images`.
 
 Rotas existentes que leem ou escrevem os dados:
 
@@ -31,7 +31,7 @@ Rotas existentes que leem ou escrevem os dados:
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me` tratam contas e autenticação.
 - `GET /api/my/products` lista anúncios da conta.
 - `POST /api/products`, `PUT /api/products/:id`, `PATCH /api/products/:id/status`, `DELETE /api/products/:id` criam, atualizam e removem anúncios e fotos.
-- `/uploads/*` continua servindo fotos locais no modo local. URLs do Blob são usadas diretamente no modo persistente.
+- `/uploads/*` continua servindo fotos locais no modo local. Fotos já públicas no Blob continuam usando suas URLs; imagens da store privada são transmitidas por `/api/blob`.
 
 ## O que já funciona
 

@@ -27,7 +27,7 @@ async function saveImages(images, productId) {
     const result = await put(
       `dabrik/products/${productId}/${crypto.randomUUID()}.${extension}`,
       buffer,
-      { access: "public", addRandomSuffix: true, contentType },
+      { access: "private", addRandomSuffix: true, contentType },
     );
     urls.push(result.url);
   }

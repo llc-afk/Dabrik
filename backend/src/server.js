@@ -9,6 +9,9 @@ const { z } = require("zod");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { Readable } = require("node:stream");
+const { pipeline } = require("node:stream/promises");
+const { get } = require("@vercel/blob");
 const database = require("./database");
 const blobStorage = require("./blob-storage");
 
@@ -94,6 +97,18 @@ function publicProduct(product, store) {
   const user = store.users.find((item) => item.id === product.ownerId);
   return {
     ...product,
+    images: (product.images || []).map((image) => {
+      try {
+        const url = new URL(image);
+        if (url.protocol === "https:" && url.hostname.endsWith(".private.blob.vercel-storage.com")
+          && /^\/dabrik\/products\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(url.pathname)) {
+          return `/api/blob?pathname=${encodeURIComponent(url.pathname)}`;
+        }
+      } catch {
+        // Caminhos locais e URLs públicas existentes seguem sem alteração.
+      }
+      return image;
+    }),
     owner: user
       ? {
           id: user.id,
@@ -162,6 +177,27 @@ const registerLimit = rateLimit({
   },
 });
 app.use("/uploads", express.static(imageDir, { maxAge: "1d" }));
+
+// Fotos de anúncios são públicas no marketplace, mas o token da store privada
+// permanece no servidor e nunca é exposto ao navegador.
+app.get("/api/blob", async (req, res, next) => {
+  try {
+    const pathname = String(req.query.pathname || "");
+    if (!/^\/dabrik\/products\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(pathname)) {
+      return res.status(404).end();
+    }
+    const blob = await get(pathname.replace(/^\//, ""), { access: "private" });
+    if (!blob) return res.status(404).end();
+    if (blob.statusCode === 304) return res.status(304).end();
+    res.setHeader("Content-Type", blob.blob.contentType || "application/octet-stream");
+    res.setHeader("Content-Length", String(blob.blob.size));
+    res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    res.setHeader("ETag", blob.blob.etag);
+    await pipeline(Readable.fromWeb(blob.stream), res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/api/health", async (_req, res) => {
   const store = await readStore();
