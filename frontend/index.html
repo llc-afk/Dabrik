@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="theme-color" content="#087f3b" />
+    <meta name="theme-color" content="#0b0f0d" />
     <meta
       name="description"
       content="Compre e venda produtos usados perto de você. Publique anúncios grátis na DaBrik."
@@ -14,7 +14,8 @@
       content="Encontre ofertas e anúncios de pessoas da sua região."
     />
     <title>DaBrik — Classificados da sua região</title>
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./favicon.png" />
     <script src="./config.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -26,15 +27,15 @@
   </head>
   <body>
     <div class="announcement">
-      <span>Compre e venda perto de você.</span
-      ><a href="/anunciar" data-link>Anuncie grátis <span>→</span></a>
+      <span><i class="announcement-dot"></i> Marketplace da sua região</span>
+      <a href="/anunciar" data-link>Anuncie grátis <span aria-hidden="true">↗</span></a>
     </div>
     <header class="header">
       <a class="brand" href="/" data-link aria-label="DaBrik início">
         <img class="brand-logo" src="./dabrik-logo.png" alt="DaBrik" />
       </a>
-      <nav class="desktop-nav">
-        <a href="/produtos" data-link>Explorar anúncios</a>
+      <nav class="desktop-nav" aria-label="Navegação principal">
+        <a href="/produtos" data-link>Explorar</a>
         <a href="/vendedor" data-link>Área do vendedor</a>
       </nav>
       <div class="header-actions">
@@ -59,6 +60,13 @@
         <div class="skeleton row-sk"></div>
       </div>
     </main>
+    <nav class="mobile-bottom-nav" aria-label="Navegação rápida">
+      <a href="/" data-link data-nav="home"><span class="nav-icon" aria-hidden="true">⌂</span><span>Início</span></a>
+      <a href="/produtos" data-link data-nav="explore"><span class="nav-icon" aria-hidden="true">⌕</span><span>Explorar</span></a>
+      <a class="nav-create" href="/anunciar" data-link data-nav="sell"><span class="nav-icon" aria-hidden="true">＋</span><span>Anunciar</span></a>
+      <a href="/carrinho" data-link data-nav="cart"><span class="nav-icon" aria-hidden="true">▱</span><span>Carrinho</span></a>
+      <a href="/vendedor" data-link data-nav="profile"><span class="nav-icon" aria-hidden="true">◉</span><span>Perfil</span></a>
+    </nav>
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">

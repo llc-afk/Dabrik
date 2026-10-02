@@ -364,6 +364,7 @@ app.post("/api/conversations", authenticate, async (req, res, next) => {
 });
 
 app.get("/api/conversations", authenticate, async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, private");
   if (usesDatabase) {
     return res.json({ items: await database.listConversations(req.user.sub) });
   }
@@ -391,6 +392,7 @@ app.get("/api/conversations", authenticate, async (req, res) => {
 });
 
 app.get("/api/conversations/:id/messages", authenticate, async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, private");
   if (usesDatabase) {
     const conversation = await database.findConversationForUser(req.params.id, req.user.sub);
     if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });

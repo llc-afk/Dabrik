@@ -7,7 +7,7 @@ document.querySelectorAll(".brand-logo").forEach((logo) => {
   logo.src = `${BASE_PATH}dabrik-logo.png`;
 });
 const favicon = document.querySelector('link[rel="icon"]');
-if (favicon) favicon.href = `${BASE_PATH}favicon.svg`;
+if (favicon) favicon.href = `${BASE_PATH}favicon.png`;
 const categories = [
   "Automóveis",
   "Casa e jardim",
@@ -85,7 +85,12 @@ async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (options.body) headers["Content-Type"] = "application/json";
   if (token()) headers.Authorization = `Bearer ${token()}`;
-  const response = await fetch(`${API}${path}`, { ...options, headers });
+  const isChatRead = options.method !== "POST" && /^\/conversations(?:\/|$)/.test(path);
+  const response = await fetch(`${API}${path}`, {
+    ...options,
+    ...(isChatRead ? { cache: "no-store" } : {}),
+    headers,
+  });
   if (response.status === 204) return null;
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Não foi possível concluir.");
@@ -199,7 +204,7 @@ function searchForm(id, values = {}) {
 
 function home() {
   const recent = products.slice(0, 8);
-  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Encontre o que precisa.<br><em>Venda o que não usa.</em></h1><p class="hero-copy">Anúncios gratuitos para comprar e vender perto de você.</p>${searchForm("home-search")}<a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a></div><div class="hero-art"><div class="community-card"><img class="community-logo" src="${BASE_PATH}dabrik-logo.png" alt="DaBrik"/><span>Gente da sua região, negociando direto.</span></div></div></div></section>${connectionNotice()}<section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
+  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Brike fácil.<br><em>É no DaBrik.</em></h1><p class="hero-copy">Encontre boas oportunidades com pessoas da sua região. Publique sem custo e combine direto com quem anuncia.</p>${searchForm("home-search")}<div class="hero-actions"><a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a><a class="hero-secondary" href="/produtos" data-link>Explorar anúncios <span aria-hidden="true">↗</span></a></div><div class="hero-assurance"><span>Publicação gratuita</span><span>Negociação direta</span></div></div><div class="hero-art"><div class="community-card"><img class="community-logo" src="${BASE_PATH}dabrik-logo.png" alt="DaBrik"/><span>Gente da sua região, negociando direto.</span></div></div></div></section>${connectionNotice()}<section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
 }
 
 function catalog() {
@@ -266,7 +271,11 @@ async function listingForm() {
     product = mine.items.find((item) => item.id === editingId) || null;
   }
   const value = (key) => escapeHTML(product?.[key] ?? "");
-  return `${pageTop(product ? "Editar anúncio" : "Anuncie grátis", "Publique fotos, preço e descrição para pessoas da sua região.")}<section class="container post-container"><div class="content-panel"><form id="listing-form" class="form-grid" data-id="${value("id")}"><div class="field span-2"><label>Título do anúncio</label><input required name="title" minlength="4" maxlength="100" value="${value("title")}" placeholder="Ex.: Bicicleta aro 29 em ótimo estado"></div><div class="field"><label>Categoria</label><select required name="category">${categories.map((category) => `<option ${product?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></div><div class="field"><label>Preço (R$)</label><input required name="price" type="number" min="0" step="0.01" value="${value("price")}" placeholder="0,00"></div><div class="field"><label>Cidade</label><input required name="city" maxlength="80" value="${value("city")}" placeholder="Sua cidade"></div><div class="field"><label>Estado</label><select required name="state">${["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"].map((state) => `<option ${product?.state === state ? "selected" : ""}>${state}</option>`).join("")}</select></div><div class="field span-2"><label>Descrição</label><textarea required name="description" minlength="10" maxlength="3000" placeholder="Conte o estado do produto, medidas e outras informações importantes.">${value("description")}</textarea></div><div class="field span-2"><label>Fotos (até 5, JPG/PNG/WebP)</label><input id="listing-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="image-preview" class="image-preview">${(product?.images || []).map((image) => `<img src="${escapeHTML(imageUrl(image))}" alt="Foto do anúncio atual">`).join("")}</div><small>Fotos são reduzidas para carregar mais rápido. Cada anúncio aceita até 5.</small></div><label class="consent-check span-2"><input type="checkbox" name="sharePhone" ${product?.sharePhone !== false ? "checked" : ""}> Mostrar meu WhatsApp (${escapeHTML(user?.phone || "")}) neste anúncio para as pessoas interessadas.</label><div class="span-2"><button class="btn-primary">${product ? "Salvar alterações" : "Publicar anúncio grátis"}</button><p id="listing-error" class="notice" hidden></p></div></form></div></section>`;
+  return `${pageTop(product ? "Editar anúncio" : "Anuncie grátis", "Publique fotos, preço e descrição para pessoas da sua região.")}<section class="container post-container"><div class="content-panel listing-editor"><div class="listing-intro"><span class="section-kicker">Publicação simples e gratuita</span><p>Preencha os detalhes para que as pessoas encontrem seu anúncio.</p></div><div class="listing-progress" aria-label="Etapas do anúncio"><span class="current"><i>01</i> Anúncio</span><b></b><span><i>02</i> Fotos</span><b></b><span><i>03</i> Publicação</span></div><form id="listing-form" class="form-grid" data-id="${value("id")}">
+    <section class="listing-block span-2"><div class="listing-block-head"><span class="step-number">01</span><div><strong>O que você está anunciando?</strong><small>Um título claro ajuda as pessoas a encontrar seu produto.</small></div></div><div class="listing-fields"><div class="field span-2"><label>Título do anúncio</label><input required name="title" minlength="4" maxlength="100" value="${value("title")}" placeholder="Ex.: Bicicleta aro 29 em ótimo estado"></div><div class="field span-2"><label>Categoria</label><select required name="category">${categories.map((category) => `<option ${product?.category === category ? "selected" : ""}>${escapeHTML(category)}</option>`).join("")}</select></div><div class="field span-2"><label>Descrição</label><textarea required name="description" minlength="10" maxlength="3000" placeholder="Conte o estado do produto, medidas e outras informações importantes.">${value("description")}</textarea></div></div></section>
+    <section class="listing-block span-2"><div class="listing-block-head"><span class="step-number">02</span><div><strong>Mostre o produto</strong><small>Adicione até cinco fotos nítidas em JPG, PNG ou WebP.</small></div></div><div class="field listing-fields-single"><label for="listing-images">Fotos do anúncio</label><input id="listing-images" name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple><div id="image-preview" class="image-preview">${(product?.images || []).map((image) => `<img src="${escapeHTML(imageUrl(image))}" alt="Foto do anúncio atual">`).join("")}</div><small>As fotos são reduzidas para carregar mais rápido. Cada arquivo pode ter até 1 MB.</small></div></section>
+    <section class="listing-block span-2"><div class="listing-block-head"><span class="step-number">03</span><div><strong>Preço e localização</strong><small>Ajude compradores próximos a encontrar o anúncio.</small></div></div><div class="listing-fields"><div class="field"><label>Preço (R$)</label><input required name="price" type="number" min="0" step="0.01" value="${value("price")}" placeholder="0,00"></div><div class="field"><label>Cidade</label><input required name="city" maxlength="80" value="${value("city")}" placeholder="Sua cidade"></div><div class="field span-2"><label>Estado</label><select required name="state">${["AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"].map((state) => `<option ${product?.state === state ? "selected" : ""}>${state}</option>`).join("")}</select></div></div></section>
+    <label class="consent-check span-2"><input type="checkbox" name="sharePhone" ${product?.sharePhone !== false ? "checked" : ""}> Mostrar meu WhatsApp (${escapeHTML(user?.phone || "")}) neste anúncio para as pessoas interessadas.</label><div class="span-2 listing-submit"><button class="btn-primary">${product ? "Salvar alterações" : "Publicar anúncio grátis"}</button><p id="listing-error" class="notice" hidden></p></div></form></div></section>`;
 }
 
 async function accountPage() {
@@ -285,27 +294,102 @@ async function accountPage() {
   return `${connectionNotice()}${pageTop("Área do vendedor", "Acompanhe seus anúncios e converse com quem tem interesse.")}<section class="container account-listings"><div class="seller-stats"><article><span>Anúncios ativos</span><strong>${active}</strong></article><article><span>Total de anúncios</span><strong>${items.length}</strong></article><article><span>Conversas</span><strong>${chats.length}</strong></article></div><div class="section-head"><h2 class="section-title">Seus anúncios</h2><a class="btn-primary" data-link href="/anunciar">＋ Novo anúncio</a></div>${items.length ? `<div class="my-listings">${items.map((product) => `<article class="my-listing"><div class="my-listing-photo">${product.images?.[0] ? `<img src="${escapeHTML(imageUrl(product.images[0]))}" alt="">` : "Sem foto"}</div><div><strong>${escapeHTML(product.title)}</strong><p>${money(product.price)} · ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</p><span class="status-pill ${product.status.toLowerCase()}">${product.status === "ACTIVE" ? "Publicado" : product.status === "PAUSED" ? "Pausado" : "Vendido"}</span></div><div class="my-listing-actions"><a class="text-link" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar</a><button class="text-link" data-action="status" data-status="${product.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}" data-id="${escapeHTML(product.id)}">${product.status === "ACTIVE" ? "Pausar" : "Reativar"}</button><button class="text-link" data-action="status" data-status="SOLD" data-id="${escapeHTML(product.id)}">Marcar vendido</button><button class="danger-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir</button></div></article>`).join("")}</div>` : emptyState("Você ainda não publicou anúncios.", "Publique gratuitamente e encontre compradores na sua região.")}${chats.length ? `<div class="seller-inbox"><div class="section-head"><h2 class="section-title">Conversas recentes</h2><a class="text-link" data-link href="/mensagens">Ver todas</a></div>${chats.slice(0, 3).map((chat) => `<a class="seller-chat-row" data-link href="/mensagens?id=${encodeURIComponent(chat.id)}"><strong>${escapeHTML(chat.otherName)}</strong><span>${escapeHTML(chat.productTitle)} · ${escapeHTML(chat.lastMessage || "Nova conversa")}</span></a>`).join("")}</div>` : `<a class="account-btn wide seller-messages-link" data-link href="/mensagens">Abrir mensagens</a>`}<button id="logout-btn" class="text-link logout-button">Sair da conta</button></section>`;
 }
 
+function formatChatTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function conversationItemsMarkup(conversations, selectedId) {
+  if (!conversations.length) {
+    return `<div class="conversation-empty"><span class="conversation-empty-mark">✳</span><strong>Nenhuma conversa ainda</strong><p>Quando você falar com alguém sobre um anúncio, a conversa aparecerá aqui.</p><a class="text-link" data-link href="/produtos">Explorar anúncios →</a></div>`;
+  }
+  return conversations.map((chat) => {
+    const name = chat.otherName || "Pessoa DaBrik";
+    const initial = [...name.trim()][0] || "D";
+    return `<a class="conversation-row ${chat.id === selectedId ? "selected" : ""}" data-link href="/mensagens?id=${encodeURIComponent(chat.id)}"><span class="conversation-avatar">${escapeHTML(initial.toLocaleUpperCase("pt-BR"))}</span><span class="conversation-meta"><strong>${escapeHTML(name)}</strong><span class="conversation-product">${escapeHTML(chat.productTitle || "Conversa DaBrik")}</span><small>${escapeHTML(chat.lastMessage || "Comece a conversa")}</small></span><span class="conversation-time">${escapeHTML(formatChatTime(chat.updatedAt || chat.lastMessageAt))}</span></a>`;
+  }).join("");
+}
+
+function chatMessagesMarkup(messages) {
+  if (!messages.length) return `<div class="messages-first"><span>✳</span><strong>Comece a conversa</strong><p>Envie uma mensagem para combinar os detalhes com segurança.</p></div>`;
+  return messages.map((message) => `<article class="chat-message ${message.senderId === getUser()?.id ? "mine" : ""}"><p>${escapeHTML(message.content)}</p><time>${escapeHTML(formatChatTime(message.createdAt))}</time></article>`).join("");
+}
+
+let lastConversationRefresh = 0;
+async function refreshChatView() {
+  if (!token() || routePath() !== "/mensagens") return;
+  const selectedId = new URLSearchParams(location.search).get("id");
+  try {
+    if (!selectedId || Date.now() - lastConversationRefresh > 3000) {
+      const result = await api("/conversations");
+      lastConversationRefresh = Date.now();
+      const conversations = result.items || [];
+      if (routePath() !== "/mensagens") return;
+      const list = document.querySelector("#conversation-items");
+      if (list) {
+        const markup = conversationItemsMarkup(conversations, selectedId);
+        if (list.innerHTML !== markup) list.innerHTML = markup;
+      }
+      const countLabel = document.querySelector(".conversation-list-head > div > span");
+      if (countLabel) countLabel.textContent = `${conversations.length} ${conversations.length === 1 ? "conversa" : "conversas"}`;
+    }
+    if (!selectedId) return;
+    const messagesResult = await api(`/conversations/${encodeURIComponent(selectedId)}/messages`);
+    if (routePath() !== "/mensagens" || new URLSearchParams(location.search).get("id") !== selectedId) return;
+    const pane = document.querySelector("#chat-messages");
+    if (!pane) return;
+    const markup = chatMessagesMarkup(messagesResult.items || []);
+    if (pane.innerHTML !== markup) {
+      const wasAtBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 90;
+      pane.innerHTML = markup;
+      if (wasAtBottom) pane.scrollTop = pane.scrollHeight;
+    }
+  } catch {
+    // Mantém a conversa visível quando a conexão falha; a próxima consulta tenta novamente.
+  }
+}
+
+let chatPollTimer = null;
+let chatPollInFlight = false;
+function stopChatPolling() {
+  clearTimeout(chatPollTimer);
+  chatPollTimer = null;
+}
+function scheduleChatPolling() {
+  stopChatPolling();
+  if (routePath() !== "/mensagens" || !token()) return;
+  // Consultas curtas mantêm o chat atualizado sem exigir recarga da página.
+  // Em produção serverless, HTTP polling evita depender de conexões WebSocket persistentes.
+  const delay = document.visibilityState === "hidden" ? 10000 : new URLSearchParams(location.search).has("id") ? 900 : 1800;
+  chatPollTimer = setTimeout(async () => {
+    if (chatPollInFlight) return scheduleChatPolling();
+    chatPollInFlight = true;
+    await refreshChatView();
+    chatPollInFlight = false;
+    scheduleChatPolling();
+  }, delay);
+}
+
 async function messagesPage() {
   if (!token())
     return `${pageTop("Mensagens", "Converse com vendedores e clientes dentro da DaBrik.")}<div class="container">${emptyState("Entre para acessar suas conversas.", "Suas mensagens ficam disponíveis na sua conta.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/entrar">Entrar</a><a class="account-btn" data-link href="/cadastro">Criar conta</a></p></div>`;
   const result = await api("/conversations").catch(() => ({ items: [] }));
   const conversations = result.items || [];
+  lastConversationRefresh = Date.now();
   const selectedId = new URLSearchParams(location.search).get("id");
   const selected = conversations.find((item) => item.id === selectedId);
   const messages = selected
     ? (await api(`/conversations/${encodeURIComponent(selected.id)}/messages`).catch(() => ({ items: [] }))).items || []
     : [];
-  const list = conversations.length
-    ? conversations.map((chat) => `<a class="conversation-row ${chat.id === selectedId ? "selected" : ""}" data-link href="/mensagens?id=${encodeURIComponent(chat.id)}"><strong>${escapeHTML(chat.otherName)}</strong><span>${escapeHTML(chat.productTitle)}</span><small>${escapeHTML(chat.lastMessage || "Comece a conversa")}</small></a>`).join("")
-    : `<div class="conversation-empty">Ainda não há conversas. Abra um anúncio e envie uma mensagem ao vendedor.</div>`;
   const chat = selected
-    ? `<div class="chat-heading"><strong>${escapeHTML(selected.otherName)}</strong><a class="text-link" data-link href="/produto/${encodeURIComponent(selected.productId)}">${escapeHTML(selected.productTitle)}</a></div><div class="chat-messages">${messages.map((message) => `<article class="chat-message ${message.senderId === getUser()?.id ? "mine" : ""}"><p>${escapeHTML(message.content)}</p><time>${new Date(message.createdAt).toLocaleString("pt-BR")}</time></article>`).join("")}</div><form id="message-form" class="message-form" data-id="${escapeHTML(selected.id)}"><textarea name="content" required maxlength="2000" placeholder="Escreva sua mensagem"></textarea><button class="btn-primary">Enviar</button></form>`
-    : `<div class="chat-empty">Selecione uma conversa para ver as mensagens.</div>`;
-  return `${pageTop("Mensagens", "Converse com vendedores e clientes dentro da DaBrik.")}<section class="container messages-page"><div class="messages-layout"><aside class="conversation-list"><h2>Conversas</h2>${list}</aside><section class="chat-panel">${chat}</section></div></section>`;
+    ? `<header class="chat-heading"><a class="chat-back" data-link href="/mensagens" aria-label="Voltar às conversas">‹</a><span class="chat-avatar">${escapeHTML([...(selected.otherName || "D")][0].toLocaleUpperCase("pt-BR"))}</span><div class="chat-identity"><strong>${escapeHTML(selected.otherName || "Pessoa DaBrik")}</strong><span>Sobre <a data-link href="/produto/${encodeURIComponent(selected.productId)}">${escapeHTML(selected.productTitle || "anúncio")}</a></span></div></header><div class="chat-messages" id="chat-messages" aria-live="polite">${chatMessagesMarkup(messages)}</div><form id="message-form" class="message-form" data-id="${escapeHTML(selected.id)}"><textarea name="content" required maxlength="2000" rows="1" aria-label="Escreva uma mensagem" placeholder="Escreva uma mensagem…"></textarea><button class="btn-primary chat-send" aria-label="Enviar mensagem" title="Enviar mensagem"><span aria-hidden="true">↑</span></button></form>`
+    : `<div class="chat-empty"><span class="chat-empty-mark">✳</span><strong>Suas conversas, em um só lugar</strong><p>Selecione uma conversa ou comece pelo anúncio de um produto.</p><a class="text-link" data-link href="/produtos">Explorar anúncios →</a></div>`;
+  return `<section class="messages-page"><div class="messages-app"><header class="messages-topbar"><div><span class="section-kicker">Atendimento direto</span><h1>Mensagens</h1></div><p>Converse com vendedores e clientes em um só lugar.</p></header><div class="messages-layout ${selected ? "has-selection" : ""}"><aside class="conversation-list"><div class="conversation-list-head"><div><h2>Conversas</h2><span>${conversations.length} ${conversations.length === 1 ? "conversa" : "conversas"}</span></div><a data-link href="/produtos" class="new-chat-link" aria-label="Encontrar um anúncio">＋</a></div><label class="conversation-search"><span aria-hidden="true">⌕</span><input id="conversation-search" type="search" placeholder="Buscar conversa" aria-label="Buscar conversa"></label><div class="conversation-items" id="conversation-items">${conversationItemsMarkup(conversations, selectedId)}</div></aside><section class="chat-panel ${selected ? "has-selection" : ""}">${chat}</section></div></div></section>`;
 }
-
 async function render() {
+  stopChatPolling();
   const path = decodeURI(routePath());
+  document.body.classList.toggle("chat-mode", path === "/mensagens" && Boolean(token()));
   let html;
   if (path === "/") {
     const result = await loadProducts("/products");
@@ -342,9 +426,23 @@ async function render() {
     html = `${pageTop("Página não encontrada", "Volte aos anúncios da sua região.")}<div class="container">${emptyState("Não encontramos essa página.", "Acesse os anúncios e continue procurando.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/produtos">Ver anúncios</a></p></div>`;
   }
   document.querySelector("#app").innerHTML = html;
+  const initialChatMessages = document.querySelector("#chat-messages");
+  if (initialChatMessages) initialChatMessages.scrollTop = initialChatMessages.scrollHeight;
+  const navPath = path === "/produtos" ? "explore"
+    : path === "/anunciar" ? "sell"
+      : path === "/carrinho" ? "cart"
+        : ["/conta", "/painel", "/vendedor", "/entrar", "/cadastro"].includes(path) ? "profile"
+          : path.startsWith("/produto/") ? "explore" : "home";
+  document.querySelectorAll(".mobile-bottom-nav [data-nav]").forEach((link) => {
+    const active = link.dataset.nav === navPath;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
   updateAccountButton();
   updateCartCount();
   bindPage();
+  if (path === "/mensagens" && token()) scheduleChatPolling();
   window.scrollTo(0, 0);
 }
 
@@ -649,12 +747,30 @@ function bindPage() {
         method: "POST",
         body: JSON.stringify({ content: new FormData(form).get("content") }),
       });
-      navigate(`/mensagens?id=${encodeURIComponent(form.dataset.id)}`);
+      form.reset();
+      lastConversationRefresh = 0;
+      await refreshChatView();
+      form.querySelector("textarea")?.focus();
+      toast("Mensagem enviada.");
     } catch (error) {
       toast(error.message);
     } finally {
       button.disabled = false;
     }
+  });
+
+  document.querySelector("#message-form textarea")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  });
+
+  document.querySelector("#conversation-search")?.addEventListener("input", (event) => {
+    const query = event.currentTarget.value.trim().toLocaleLowerCase("pt-BR");
+    document.querySelectorAll(".conversation-row").forEach((row) => {
+      row.hidden = !row.textContent.toLocaleLowerCase("pt-BR").includes(query);
+    });
   });
 
   const accountButton = document.querySelector("#account-btn");
@@ -691,5 +807,16 @@ document.querySelector("#menu-toggle")?.addEventListener("click", () => {
   nav.classList.toggle("open");
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || routePath() !== "/mensagens") return;
+  stopChatPolling();
+  if (!chatPollInFlight) {
+    chatPollInFlight = true;
+    refreshChatView().finally(() => {
+      chatPollInFlight = false;
+      scheduleChatPolling();
+    });
+  }
+});
 window.addEventListener("popstate", render);
 render();
