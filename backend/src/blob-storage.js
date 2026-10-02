@@ -21,9 +21,6 @@ function validateImage(dataUrl) {
 }
 
 async function saveImages(images, productId) {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    throw new Error("Configure BLOB_READ_WRITE_TOKEN para armazenar fotos.");
-  }
   const urls = [];
   for (const image of images) {
     const { buffer, extension, contentType } = validateImage(image);

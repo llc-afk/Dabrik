@@ -18,9 +18,6 @@ const usesDatabase = Boolean(process.env.DATABASE_URL);
 if (process.env.NODE_ENV === "production" && !usesDatabase) {
   throw new Error("Configure DATABASE_URL para iniciar o DaBrik em produção.");
 }
-if (usesDatabase && !process.env.BLOB_READ_WRITE_TOKEN && process.env.NODE_ENV === "production") {
-  throw new Error("Configure BLOB_READ_WRITE_TOKEN para armazenar fotos em produção.");
-}
 const dataDir = path.join(root, "data");
 const imageDir = path.join(root, "uploads");
 const dataFile = path.join(dataDir, "marketplace.json");

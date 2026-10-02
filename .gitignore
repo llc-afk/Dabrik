@@ -9,3 +9,5 @@ uploads/*
 coverage/
 *.log
 _site/
+.vercel
+.env*
