@@ -2,6 +2,12 @@ const siteConfig = window.DABRIK_CONFIG || {};
 const BASE_PATH = normalizeBasePath(siteConfig.basePath || "/");
 const API_BASE_URL = String(siteConfig.apiBaseUrl || "").replace(/\/+$/, "");
 const API = API_BASE_URL ? `${API_BASE_URL}/api` : `${BASE_PATH}api`.replace(/\/+/g, "/");
+const CART_KEY = "dabrik-cart";
+document.querySelectorAll(".brand-logo").forEach((logo) => {
+  logo.src = `${BASE_PATH}dabrik-logo.png`;
+});
+const favicon = document.querySelector('link[rel="icon"]');
+if (favicon) favicon.href = `${BASE_PATH}favicon.svg`;
 const categories = [
   "Automóveis",
   "Casa e jardim",
@@ -19,6 +25,7 @@ const categories = [
 let products = [];
 let toastTimer;
 let apiProblem = "";
+let currentProduct = null;
 
 function normalizeBasePath(value) {
   const path = `/${String(value).replace(/^\/+|\/+$/g, "")}/`;
@@ -116,7 +123,65 @@ function productCard(product) {
   const image = photo
     ? `<img src="${escapeHTML(imageUrl(photo))}" alt="${escapeHTML(product.title)}" loading="lazy">`
     : '<div class="no-photo">Sem foto</div>';
-  return `<article class="product-card"><a class="product-link" data-link href="/produto/${encodeURIComponent(product.id)}"><div class="product-image">${image}<span class="badge">${escapeHTML(product.category)}</span></div><div class="product-info"><h3 class="product-title">${escapeHTML(product.title)}</h3><div class="price-row"><span class="price">${money(product.price)}</span></div><div class="loc">⌖ ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</div></div></a></article>`;
+  return `<article class="product-card"><a class="product-link" data-link href="/produto/${encodeURIComponent(product.id)}"><div class="product-image">${image}<span class="badge">${escapeHTML(product.category)}</span></div><div class="product-info"><h3 class="product-title">${escapeHTML(product.title)}</h3><div class="price-row"><span class="price">${money(product.price)}</span></div><div class="loc">⌖ ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</div></div></a><button class="cart-add" data-action="cart-add" data-id="${escapeHTML(product.id)}">Adicionar ao carrinho</button></article>`;
+}
+
+function getCart() {
+  try {
+    const cart = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+    return Array.isArray(cart) ? cart : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCart(cart) {
+  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+  updateCartCount();
+}
+
+function updateCartCount() {
+  const count = getCart().reduce((total, item) => total + item.quantity, 0);
+  document.querySelectorAll(".cart-count").forEach((element) => {
+    element.textContent = String(count);
+  });
+}
+
+function bindCartAddActions() {
+  document.querySelectorAll('[data-action="cart-add"]').forEach((button) => {
+    button.onclick = async () => {
+      const id = button.dataset.id;
+      let product = products.find((item) => item.id === id);
+      if (!product && currentProduct?.id === id) product = currentProduct;
+      if (!product) {
+        try {
+          product = (await api(`/products/${encodeURIComponent(id)}`)).product;
+        } catch (error) {
+          toast(error.message);
+          return;
+        }
+      }
+      const cart = getCart();
+      const existing = cart.find((item) => item.id === product.id);
+      if (existing) existing.quantity = Math.min(99, existing.quantity + 1);
+      else cart.push({
+        id: product.id,
+        title: product.title,
+        price: Number(product.price),
+        image: product.images?.[0] ? imageUrl(product.images[0]) : "",
+        quantity: 1,
+      });
+      saveCart(cart);
+      toast("Anúncio adicionado ao carrinho.");
+    };
+  });
+}
+
+function cartPage() {
+  const cart = getCart();
+  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const items = cart.map((item) => `<article class="cart-item"><a class="cart-item-image" data-link href="/produto/${encodeURIComponent(item.id)}">${item.image ? `<img src="${escapeHTML(item.image)}" alt="">` : "Sem foto"}</a><div class="cart-item-info"><a data-link href="/produto/${encodeURIComponent(item.id)}"><strong>${escapeHTML(item.title)}</strong></a><span>${money(item.price)}</span><a class="text-link" data-link href="/mensagens">Falar com o vendedor</a></div><div class="cart-quantity"><button data-action="cart-quantity" data-id="${escapeHTML(item.id)}" data-delta="-1" aria-label="Diminuir quantidade">−</button><span>${item.quantity}</span><button data-action="cart-quantity" data-id="${escapeHTML(item.id)}" data-delta="1" aria-label="Aumentar quantidade">＋</button><button class="danger-link" data-action="cart-remove" data-id="${escapeHTML(item.id)}">Remover</button></div><strong class="cart-line-total">${money(item.price * item.quantity)}</strong></article>`).join("");
+  return `${pageTop("Carrinho", "Guarde os anúncios que quer considerar e fale com cada vendedor.")}${cart.length ? `<section class="container cart-page"><div class="cart-items">${items}</div><aside class="content-panel cart-summary"><span>Subtotal estimado</span><strong>${money(total)}</strong><p>O pagamento e a entrega são combinados diretamente com cada vendedor.</p><a class="btn-primary wide" data-link href="/mensagens">Conversar com vendedores</a><button class="text-link" data-action="cart-clear">Esvaziar carrinho</button></aside></section>` : `<div class="container">${emptyState("Seu carrinho está vazio.", "Adicione anúncios que você quer comparar ou consultar com os vendedores.")}</div>`}`;
 }
 
 function productGrid(items) {
@@ -134,7 +199,7 @@ function searchForm(id, values = {}) {
 
 function home() {
   const recent = products.slice(0, 8);
-  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Encontre o que precisa.<br><em>Venda o que não usa.</em></h1><p class="hero-copy">Anúncios gratuitos para comprar e vender perto de você.</p>${searchForm("home-search")}<a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a></div><div class="hero-art"><div class="community-card"><strong>DaBrik</strong><span>Gente da sua região, negociando direto.</span></div></div></div></section>${connectionNotice()}<section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
+  return `<section class="hero classifieds-hero"><div class="container hero-grid"><div><span class="eyebrow">Classificados da sua região</span><h1>Encontre o que precisa.<br><em>Venda o que não usa.</em></h1><p class="hero-copy">Anúncios gratuitos para comprar e vender perto de você.</p>${searchForm("home-search")}<a class="btn-primary post-hero" href="/anunciar" data-link>＋ Anunciar grátis</a></div><div class="hero-art"><div class="community-card"><img class="community-logo" src="${BASE_PATH}dabrik-logo.png" alt="DaBrik"/><span>Gente da sua região, negociando direto.</span></div></div></div></section>${connectionNotice()}<section class="section"><div class="container"><div class="section-head"><div><span class="section-kicker">Explore</span><h2 class="section-title">Escolha uma categoria</h2></div></div><div class="category-grid classifieds-categories">${categories.map((category) => `<a class="category" data-link href="/produtos?categoria=${encodeURIComponent(category)}"><span class="category-icon">${category === "Automóveis" ? "🚗" : category === "Casa e jardim" ? "🏡" : category === "Celulares e tablets" ? "📱" : category === "Móveis" ? "🪑" : category === "Imóveis" ? "🏠" : category === "Serviços" ? "🧰" : "＋"}</span><span>${escapeHTML(category)}</span></a>`).join("")}</div></div></section><section class="section latest-section"><div class="container"><div class="section-head"><div><span class="section-kicker">Novidades</span><h2 class="section-title">Anúncios recentes</h2></div><a href="/produtos" data-link class="text-link">Ver todos →</a></div>${productGrid(recent)}</div></section>`;
 }
 
 function catalog() {
@@ -156,6 +221,7 @@ async function detail(id) {
   let product;
   try {
     product = (await api(`/products/${encodeURIComponent(id)}`)).product;
+    currentProduct = product;
   } catch (error) {
     return `${pageTop("Anúncio indisponível", "Este anúncio pode ter sido removido ou pausado.")}<div class="container"><div class="notice api-notice">${escapeHTML(error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message)}</div>${emptyState("Não foi possível abrir este anúncio.", "Volte aos anúncios e tente novamente.", false)}</div>`;
   }
@@ -173,7 +239,7 @@ async function detail(id) {
   const contact = product.owner?.phone
     ? `<a class="btn-primary wide" target="_blank" rel="noopener noreferrer" href="https://wa.me/55${escapeHTML(whatsapp)}?text=${encodeURIComponent(`Olá! Tenho interesse no anúncio: ${product.title}`)}">Conversar pelo WhatsApp</a><a class="contact-call" href="tel:${escapeHTML(phone.replace(/[^+\d]/g, ""))}">Ligar para ${escapeHTML(product.owner.name)}</a>`
     : '<p class="muted-note">O anunciante não compartilhou um telefone para contato.</p>';
-  return `${pageTop("Detalhes do anúncio", `${product.city} - ${product.state}`)}<section class="container listing-detail"><div class="listing-gallery">${images}</div><article class="content-panel listing-description"><span class="section-kicker">${escapeHTML(product.category)}</span><h1>${escapeHTML(product.title)}</h1><p class="listing-location">⌖ ${escapeHTML(product.city)} - ${escapeHTML(product.state)} · Publicado em ${new Date(product.createdAt).toLocaleDateString("pt-BR")}</p><h2>Descrição</h2><p class="description-text">${escapeHTML(product.description).replace(/\n/g, "<br>")}</p><h2>Sobre o anunciante</h2><p>${escapeHTML(product.owner?.name || "Anunciante DaBrik")}</p></article><aside class="detail-aside listing-price"><span class="section-kicker">Preço</span><p class="price">${money(product.price)}</p>${contact}${mine ? `<div class="owner-actions"><a class="account-btn wide" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar anúncio</a><button class="text-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir anúncio</button></div>` : ""}<p class="safety-note">Combine o pagamento e a entrega diretamente com o anunciante. Confira o produto antes de pagar.</p></aside></section>`;
+  return `${pageTop("Detalhes do anúncio", `${product.city} - ${product.state}`)}<section class="container listing-detail"><div class="listing-gallery">${images}</div><article class="content-panel listing-description"><span class="section-kicker">${escapeHTML(product.category)}</span><h1>${escapeHTML(product.title)}</h1><p class="listing-location">⌖ ${escapeHTML(product.city)} - ${escapeHTML(product.state)} · Publicado em ${new Date(product.createdAt).toLocaleDateString("pt-BR")}</p><h2>Descrição</h2><p class="description-text">${escapeHTML(product.description).replace(/\n/g, "<br>")}</p><h2>Sobre o anunciante</h2><p>${escapeHTML(product.owner?.name || "Anunciante DaBrik")}</p></article><aside class="detail-aside listing-price"><span class="section-kicker">Preço</span><p class="price">${money(product.price)}</p>${contact}${mine ? `<div class="owner-actions"><a class="account-btn wide" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar anúncio</a><button class="text-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir anúncio</button></div>` : ""}<p class="safety-note">Combine o pagamento e a entrega diretamente com o anunciante. Confira o produto antes de pagar.</p><button class="account-btn wide" data-action="cart-add" data-id="${escapeHTML(product.id)}">Adicionar ao carrinho</button>${mine ? "" : token() ? `<form class="chat-start-form" id="chat-start-form"><label for="chat-first-message">Converse com o vendedor pelo DaBrik</label><textarea id="chat-first-message" name="content" required maxlength="2000" placeholder="Olá! Tenho interesse neste anúncio."></textarea><button class="btn-primary wide">Enviar mensagem</button></form>` : `<a class="account-btn wide" data-link href="/entrar">Entre para conversar pelo DaBrik</a>`}<details class="report-product"><summary>Denunciar este anúncio</summary>${token() ? `<form id="report-form" class="report-form"><label>Motivo<select name="reason" required><option value="">Selecione</option><option value="fraud">Suspeita de fraude</option><option value="prohibited">Produto proibido</option><option value="counterfeit">Produto falsificado</option><option value="misleading">Informações enganosas</option><option value="other">Outro motivo</option></select></label><label>Detalhes (opcional)<textarea name="details" maxlength="1000" placeholder="Explique o que chamou sua atenção"></textarea></label><button class="danger-link">Enviar denúncia</button></form>` : `<p><a class="text-link" data-link href="/entrar">Entre para denunciar este anúncio.</a></p>`}</details></aside></section>`;
 }
 
 function getUser() {
@@ -205,14 +271,37 @@ async function listingForm() {
 
 async function accountPage() {
   if (!token())
-    return `${pageTop("Minha conta", "Entre para ver seus anúncios.")}<div class="container">${emptyState("Acesse sua conta para continuar.", "Crie e acompanhe seus anúncios em um só lugar.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/entrar">Entrar</a><a class="account-btn" data-link href="/cadastro">Criar conta</a></p></div>`;
-  const result = await api("/my/products").catch((error) => {
-    apiProblem =
-      error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message;
-    return { items: [] };
-  });
+    return `${pageTop("Área do vendedor", "Entre para acompanhar seus anúncios e responder aos clientes.")}<div class="container">${emptyState("Acesse sua conta para abrir a área do vendedor.", "Gerencie anúncios e conversas em um só lugar.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/entrar">Entrar</a><a class="account-btn" data-link href="/cadastro">Criar conta</a></p></div>`;
+  const [result, conversations] = await Promise.all([
+    api("/my/products").catch((error) => {
+      apiProblem = error.message === "Failed to fetch" ? apiUnavailableMessage() : error.message;
+      return { items: [] };
+    }),
+    api("/conversations").catch(() => ({ items: [] })),
+  ]);
   const items = result.items || [];
-  return `${connectionNotice()}${pageTop("Meus anúncios", "Edite, pause, reative ou marque seus anúncios como vendidos.")}<section class="container account-listings"><div class="section-head"><h2 class="section-title">Olá, ${escapeHTML(getUser()?.name || "anunciante")}</h2><a class="btn-primary" data-link href="/anunciar">＋ Novo anúncio</a></div>${items.length ? `<div class="my-listings">${items.map((product) => `<article class="my-listing"><div class="my-listing-photo">${product.images?.[0] ? `<img src="${escapeHTML(imageUrl(product.images[0]))}" alt="">` : "Sem foto"}</div><div><strong>${escapeHTML(product.title)}</strong><p>${money(product.price)} · ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</p><span class="status-pill ${product.status.toLowerCase()}">${product.status === "ACTIVE" ? "Publicado" : product.status === "PAUSED" ? "Pausado" : "Vendido"}</span></div><div class="my-listing-actions"><a class="text-link" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar</a><button class="text-link" data-action="status" data-status="${product.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}" data-id="${escapeHTML(product.id)}">${product.status === "ACTIVE" ? "Pausar" : "Reativar"}</button><button class="text-link" data-action="status" data-status="SOLD" data-id="${escapeHTML(product.id)}">Marcar vendido</button><button class="danger-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir</button></div></article>`).join("")}</div>` : emptyState("Você ainda não publicou anúncios.", "Publique gratuitamente e encontre compradores na sua região.")}<button id="logout-btn" class="text-link logout-button">Sair da conta</button></section>`;
+  const active = items.filter((item) => item.status === "ACTIVE").length;
+  const chats = conversations.items || [];
+  return `${connectionNotice()}${pageTop("Área do vendedor", "Acompanhe seus anúncios e converse com quem tem interesse.")}<section class="container account-listings"><div class="seller-stats"><article><span>Anúncios ativos</span><strong>${active}</strong></article><article><span>Total de anúncios</span><strong>${items.length}</strong></article><article><span>Conversas</span><strong>${chats.length}</strong></article></div><div class="section-head"><h2 class="section-title">Seus anúncios</h2><a class="btn-primary" data-link href="/anunciar">＋ Novo anúncio</a></div>${items.length ? `<div class="my-listings">${items.map((product) => `<article class="my-listing"><div class="my-listing-photo">${product.images?.[0] ? `<img src="${escapeHTML(imageUrl(product.images[0]))}" alt="">` : "Sem foto"}</div><div><strong>${escapeHTML(product.title)}</strong><p>${money(product.price)} · ${escapeHTML(product.city)} - ${escapeHTML(product.state)}</p><span class="status-pill ${product.status.toLowerCase()}">${product.status === "ACTIVE" ? "Publicado" : product.status === "PAUSED" ? "Pausado" : "Vendido"}</span></div><div class="my-listing-actions"><a class="text-link" data-link href="/anunciar?editar=${encodeURIComponent(product.id)}">Editar</a><button class="text-link" data-action="status" data-status="${product.status === "ACTIVE" ? "PAUSED" : "ACTIVE"}" data-id="${escapeHTML(product.id)}">${product.status === "ACTIVE" ? "Pausar" : "Reativar"}</button><button class="text-link" data-action="status" data-status="SOLD" data-id="${escapeHTML(product.id)}">Marcar vendido</button><button class="danger-link" data-action="delete" data-id="${escapeHTML(product.id)}">Excluir</button></div></article>`).join("")}</div>` : emptyState("Você ainda não publicou anúncios.", "Publique gratuitamente e encontre compradores na sua região.")}${chats.length ? `<div class="seller-inbox"><div class="section-head"><h2 class="section-title">Conversas recentes</h2><a class="text-link" data-link href="/mensagens">Ver todas</a></div>${chats.slice(0, 3).map((chat) => `<a class="seller-chat-row" data-link href="/mensagens?id=${encodeURIComponent(chat.id)}"><strong>${escapeHTML(chat.otherName)}</strong><span>${escapeHTML(chat.productTitle)} · ${escapeHTML(chat.lastMessage || "Nova conversa")}</span></a>`).join("")}</div>` : `<a class="account-btn wide seller-messages-link" data-link href="/mensagens">Abrir mensagens</a>`}<button id="logout-btn" class="text-link logout-button">Sair da conta</button></section>`;
+}
+
+async function messagesPage() {
+  if (!token())
+    return `${pageTop("Mensagens", "Converse com vendedores e clientes dentro da DaBrik.")}<div class="container">${emptyState("Entre para acessar suas conversas.", "Suas mensagens ficam disponíveis na sua conta.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/entrar">Entrar</a><a class="account-btn" data-link href="/cadastro">Criar conta</a></p></div>`;
+  const result = await api("/conversations").catch(() => ({ items: [] }));
+  const conversations = result.items || [];
+  const selectedId = new URLSearchParams(location.search).get("id");
+  const selected = conversations.find((item) => item.id === selectedId);
+  const messages = selected
+    ? (await api(`/conversations/${encodeURIComponent(selected.id)}/messages`).catch(() => ({ items: [] }))).items || []
+    : [];
+  const list = conversations.length
+    ? conversations.map((chat) => `<a class="conversation-row ${chat.id === selectedId ? "selected" : ""}" data-link href="/mensagens?id=${encodeURIComponent(chat.id)}"><strong>${escapeHTML(chat.otherName)}</strong><span>${escapeHTML(chat.productTitle)}</span><small>${escapeHTML(chat.lastMessage || "Comece a conversa")}</small></a>`).join("")
+    : `<div class="conversation-empty">Ainda não há conversas. Abra um anúncio e envie uma mensagem ao vendedor.</div>`;
+  const chat = selected
+    ? `<div class="chat-heading"><strong>${escapeHTML(selected.otherName)}</strong><a class="text-link" data-link href="/produto/${encodeURIComponent(selected.productId)}">${escapeHTML(selected.productTitle)}</a></div><div class="chat-messages">${messages.map((message) => `<article class="chat-message ${message.senderId === getUser()?.id ? "mine" : ""}"><p>${escapeHTML(message.content)}</p><time>${new Date(message.createdAt).toLocaleString("pt-BR")}</time></article>`).join("")}</div><form id="message-form" class="message-form" data-id="${escapeHTML(selected.id)}"><textarea name="content" required maxlength="2000" placeholder="Escreva sua mensagem"></textarea><button class="btn-primary">Enviar</button></form>`
+    : `<div class="chat-empty">Selecione uma conversa para ver as mensagens.</div>`;
+  return `${pageTop("Mensagens", "Converse com vendedores e clientes dentro da DaBrik.")}<section class="container messages-page"><div class="messages-layout"><aside class="conversation-list"><h2>Conversas</h2>${list}</aside><section class="chat-panel">${chat}</section></div></section>`;
 }
 
 async function render() {
@@ -243,20 +332,30 @@ async function render() {
     html = authPage();
   } else if (path === "/cadastro") {
     html = authPage(true);
-  } else if (path === "/conta" || path === "/painel") {
+  } else if (path === "/conta" || path === "/painel" || path === "/vendedor") {
     html = await accountPage();
+  } else if (path === "/carrinho") {
+    html = cartPage();
+  } else if (path === "/mensagens") {
+    html = await messagesPage();
   } else {
     html = `${pageTop("Página não encontrada", "Volte aos anúncios da sua região.")}<div class="container">${emptyState("Não encontramos essa página.", "Acesse os anúncios e continue procurando.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/produtos">Ver anúncios</a></p></div>`;
   }
   document.querySelector("#app").innerHTML = html;
   updateAccountButton();
+  updateCartCount();
   bindPage();
   window.scrollTo(0, 0);
 }
 
 function updateAccountButton() {
   const button = document.querySelector("#account-btn");
-  if (button) button.textContent = token() ? "Minha conta" : "Entrar";
+  if (button) {
+    const loggedIn = Boolean(token());
+    button.textContent = loggedIn ? "Sair" : "Entrar";
+    button.setAttribute("aria-label", loggedIn ? "Sair da conta" : "Entrar");
+    button.title = loggedIn ? "Sair da conta" : "Entrar na sua conta";
+  }
 }
 
 function navigate(url) {
@@ -353,6 +452,7 @@ function bindPage() {
       document.querySelector("#result-count").textContent =
         `${items.length} anúncio${items.length === 1 ? "" : "s"}`;
       document.querySelector("#catalog-results").innerHTML = productGrid(items);
+      bindCartAddActions();
     });
 
   document
@@ -471,9 +571,102 @@ function bindPage() {
     });
   });
 
-  document
-    .querySelector("#account-btn")
-    ?.addEventListener("click", () => navigate(token() ? "/conta" : "/entrar"));
+  bindCartAddActions();
+
+  document.querySelectorAll('[data-action="cart-quantity"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      const delta = Number(button.dataset.delta);
+      const cart = getCart();
+      const item = cart.find((entry) => entry.id === button.dataset.id);
+      if (!item) return;
+      item.quantity = Math.max(1, Math.min(99, item.quantity + delta));
+      saveCart(cart);
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="cart-remove"]').forEach((button) => {
+    button.addEventListener("click", () => {
+      saveCart(getCart().filter((item) => item.id !== button.dataset.id));
+      render();
+    });
+  });
+  document.querySelector('[data-action="cart-clear"]')?.addEventListener("click", () => {
+    saveCart([]);
+    render();
+  });
+
+  document.querySelector("#report-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const productId = currentProduct?.id;
+    if (!productId) return;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const body = Object.fromEntries(new FormData(form));
+      const result = await api(`/products/${encodeURIComponent(productId)}/report`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      toast(result.message || "Denúncia enviada.");
+      form.reset();
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  document.querySelector("#chat-start-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const result = await api("/conversations", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: currentProduct.id,
+          content: new FormData(form).get("content"),
+        }),
+      });
+      navigate(`/mensagens?id=${encodeURIComponent(result.conversationId)}`);
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  document.querySelector("#message-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      await api(`/conversations/${encodeURIComponent(form.dataset.id)}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content: new FormData(form).get("content") }),
+      });
+      navigate(`/mensagens?id=${encodeURIComponent(form.dataset.id)}`);
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  const accountButton = document.querySelector("#account-btn");
+  if (accountButton) {
+    accountButton.onclick = () => {
+      if (!token()) return navigate("/entrar");
+      localStorage.removeItem("dabrik-token");
+      localStorage.removeItem("dabrik-user");
+      toast("Você saiu da sua conta.");
+      navigate("/");
+    };
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -492,7 +685,7 @@ document.querySelector("#menu-toggle")?.addEventListener("click", () => {
     nav = document.createElement("nav");
     nav.className = "mobile-nav";
     nav.innerHTML =
-      '<a href="/produtos" data-link>Anúncios</a><a href="/anunciar" data-link>Anunciar grátis</a><a href="/conta" data-link>Meus anúncios</a>';
+      '<a href="/produtos" data-link>Anúncios</a><a href="/anunciar" data-link>Anunciar grátis</a><a href="/vendedor" data-link>Área do vendedor</a><a href="/mensagens" data-link>Mensagens</a><a href="/carrinho" data-link>Carrinho</a>';
     document.body.appendChild(nav);
   }
   nav.classList.toggle("open");

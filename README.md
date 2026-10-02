@@ -93,3 +93,16 @@ O workflow `.github/workflows/pages.yml` publica somente o conteúdo de `fronten
 O GitHub Pages serve apenas o frontend. Para ligar cadastro/login/anúncios à API na Vercel, siga o procedimento de produção e configure `DABRIK_API_BASE_URL` conforme acima.
 
 Sem uma URL de API configurada, o frontend publicado exibe uma mensagem de backend desconectado; ele não simula anúncios ou contas. O uso local continua usando `http://localhost:3000` e a API local.
+
+## Área do vendedor, carrinho, denúncias e mensagens
+
+Esta cópia de teste inclui:
+
+- **Área do vendedor** em `/vendedor`, com anúncios e conversas recentes.
+- **Denúncia de anúncios**, disponível na página de cada produto para usuários autenticados.
+- **Carrinho** em `/carrinho`, salvo no navegador. Ele calcula um subtotal estimado; pagamento e entrega são combinados com o vendedor.
+- **Mensagens privadas** entre comprador e vendedor em `/mensagens`. As conversas são restritas às duas contas participantes.
+
+As tabelas `product_reports`, `conversations` e `messages` são criadas automaticamente no PostgreSQL já configurado no projeto. Para o modo local sem `DATABASE_URL`, essas novas informações ficam no arquivo local da cópia.
+
+Para abrir localmente, instale as dependências com `npm ci` e rode `npm run dev`. A cópia foi criada sem credenciais, banco JSON de produção ou uploads do projeto original.

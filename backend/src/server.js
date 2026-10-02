@@ -66,7 +66,11 @@ if (secret.length < 32) {
 }
 
 function readLocalStore() {
-  return JSON.parse(fs.readFileSync(dataFile, "utf8"));
+  const store = JSON.parse(fs.readFileSync(dataFile, "utf8"));
+  store.reports ||= [];
+  store.conversations ||= [];
+  store.messages ||= [];
+  return store;
 }
 
 function saveStore(store) {
@@ -119,7 +123,7 @@ app.use(
   }),
 );
 const allowedOrigins = new Set(
-  (process.env.CORS_ORIGIN || "http://localhost:3000,http://127.0.0.1:3000,https://llc-afk.github.io")
+  (process.env.CORS_ORIGIN || "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,https://llc-afk.github.io")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
@@ -224,6 +228,181 @@ app.get("/api/products/:id", async (req, res) => {
   if (!product)
     return res.status(404).json({ error: "Anúncio não encontrado." });
   res.json({ product: publicProduct(product, store) });
+});
+
+app.post("/api/products/:id/report", authenticate, async (req, res, next) => {
+  try {
+    const data = z.object({
+      reason: z.enum(["fraud", "prohibited", "counterfeit", "misleading", "other"]),
+      details: z.string().trim().max(1000).default(""),
+    }).parse(req.body);
+    const store = await readStore();
+    const product = store.products.find(
+      (item) => item.id === req.params.id && item.status === "ACTIVE",
+    );
+    if (!product) return res.status(404).json({ error: "Anúncio não encontrado." });
+    if (product.ownerId === req.user.sub) {
+      return res.status(400).json({ error: "Você não pode denunciar seu próprio anúncio." });
+    }
+    const report = {
+      id: crypto.randomUUID(),
+      productId: product.id,
+      reporterId: req.user.sub,
+      ...data,
+      createdAt: new Date().toISOString(),
+    };
+    if (usesDatabase) {
+      if (!(await database.createProductReport(report))) {
+        return res.status(409).json({ error: "Você já denunciou este anúncio." });
+      }
+    } else {
+      const local = readLocalStore();
+      if (local.reports.some((item) => item.productId === product.id && item.reporterId === req.user.sub)) {
+        return res.status(409).json({ error: "Você já denunciou este anúncio." });
+      }
+      local.reports.push(report);
+      saveStore(local);
+    }
+    res.status(201).json({ message: "Denúncia enviada para análise." });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/conversations", authenticate, async (req, res, next) => {
+  try {
+    const data = z.object({
+      productId: z.string().uuid(),
+      content: z.string().trim().min(1).max(2000),
+    }).parse(req.body);
+    const store = await readStore();
+    const product = store.products.find(
+      (item) => item.id === data.productId && item.status === "ACTIVE",
+    );
+    if (!product) return res.status(404).json({ error: "Anúncio não encontrado." });
+    if (product.ownerId === req.user.sub) {
+      return res.status(400).json({ error: "Você não pode iniciar um chat com seu próprio anúncio." });
+    }
+    const conversation = {
+      id: crypto.randomUUID(),
+      productId: product.id,
+      buyerId: req.user.sub,
+      sellerId: product.ownerId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    let conversationId;
+    if (usesDatabase) {
+      conversationId = await database.createConversation(conversation);
+    } else {
+      const local = readLocalStore();
+      const existing = local.conversations.find(
+        (item) => item.productId === product.id && item.buyerId === req.user.sub,
+      );
+      conversationId = existing?.id || conversation.id;
+      if (!existing) local.conversations.push(conversation);
+      const message = {
+        id: crypto.randomUUID(),
+        conversationId,
+        senderId: req.user.sub,
+        content: data.content,
+        createdAt: new Date().toISOString(),
+      };
+      local.messages.push(message);
+      const stored = local.conversations.find((item) => item.id === conversationId);
+      stored.updatedAt = message.createdAt;
+      saveStore(local);
+    }
+    if (usesDatabase) {
+      await database.createMessage({
+        id: crypto.randomUUID(),
+        senderId: req.user.sub,
+        content: data.content,
+        createdAt: new Date().toISOString(),
+      }, conversationId);
+    }
+    res.status(201).json({ conversationId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/conversations", authenticate, async (req, res) => {
+  if (usesDatabase) {
+    return res.json({ items: await database.listConversations(req.user.sub) });
+  }
+  const store = readLocalStore();
+  const items = store.conversations
+    .filter((item) => item.buyerId === req.user.sub || item.sellerId === req.user.sub)
+    .map((conversation) => {
+      const product = store.products.find((item) => item.id === conversation.productId);
+      const otherId = conversation.buyerId === req.user.sub
+        ? conversation.sellerId
+        : conversation.buyerId;
+      const other = store.users.find((item) => item.id === otherId);
+      const messages = store.messages.filter((item) => item.conversationId === conversation.id);
+      return {
+        id: conversation.id,
+        productId: conversation.productId,
+        productTitle: product?.title || "Anúncio removido",
+        otherName: other?.name || "Usuário DaBrik",
+        lastMessage: messages.at(-1)?.content || "",
+        updatedAt: conversation.updatedAt,
+      };
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  res.json({ items });
+});
+
+app.get("/api/conversations/:id/messages", authenticate, async (req, res) => {
+  if (usesDatabase) {
+    const conversation = await database.findConversationForUser(req.params.id, req.user.sub);
+    if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+    return res.json({ items: await database.listMessages(conversation.id) });
+  }
+  const store = readLocalStore();
+  const conversation = store.conversations.find(
+    (item) => item.id === req.params.id &&
+      (item.buyerId === req.user.sub || item.sellerId === req.user.sub),
+  );
+  if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+  const items = store.messages
+    .filter((item) => item.conversationId === conversation.id)
+    .map((item) => ({
+      ...item,
+      senderName: store.users.find((user) => user.id === item.senderId)?.name || "Usuário DaBrik",
+    }));
+  res.json({ items });
+});
+
+app.post("/api/conversations/:id/messages", authenticate, async (req, res, next) => {
+  try {
+    const data = z.object({ content: z.string().trim().min(1).max(2000) }).parse(req.body);
+    const message = {
+      id: crypto.randomUUID(),
+      senderId: req.user.sub,
+      content: data.content,
+      createdAt: new Date().toISOString(),
+    };
+    if (usesDatabase) {
+      const conversation = await database.findConversationForUser(req.params.id, req.user.sub);
+      if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+      await database.createMessage(message, conversation.id);
+    } else {
+      const local = readLocalStore();
+      const conversation = local.conversations.find(
+        (item) => item.id === req.params.id &&
+          (item.buyerId === req.user.sub || item.sellerId === req.user.sub),
+      );
+      if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+      local.messages.push({ ...message, conversationId: conversation.id });
+      conversation.updatedAt = message.createdAt;
+      saveStore(local);
+    }
+    res.status(201).json({ message });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/auth/register", registerLimit, async (req, res, next) => {
@@ -478,6 +657,18 @@ app.delete("/api/products/:id", authenticate, async (req, res) => {
     await blobStorage.deleteImages(product.images).catch((error) => console.error(error));
   } else {
     store.products = store.products.filter((item) => item.id !== product.id);
+    store.reports = store.reports.filter((item) => item.productId !== product.id);
+    const conversationIds = new Set(
+      store.conversations
+        .filter((item) => item.productId === product.id)
+        .map((item) => item.id),
+    );
+    store.conversations = store.conversations.filter(
+      (item) => !conversationIds.has(item.id),
+    );
+    store.messages = store.messages.filter(
+      (item) => !conversationIds.has(item.conversationId),
+    );
     saveStore(store);
     for (const image of product.images) {
       const filename = path.basename(image);

@@ -30,19 +30,24 @@
       ><a href="/anunciar" data-link>Anuncie grátis <span>→</span></a>
     </div>
     <header class="header">
-      <a class="brand" href="/" data-link aria-label="DaBrik início"
-        ><span class="brand-mark">D</span
-        ><span
-          >DaBrik<span class="brand-dot">.</span
-          ><small>Classificados da sua região</small></span
-        ></a
-      >
+      <a class="brand" href="/" data-link aria-label="DaBrik início">
+        <img class="brand-logo" src="./dabrik-logo.png" alt="DaBrik" />
+      </a>
       <nav class="desktop-nav">
         <a href="/produtos" data-link>Explorar anúncios</a>
+        <a href="/vendedor" data-link>Área do vendedor</a>
       </nav>
       <div class="header-actions">
         <a class="seller-link" href="/anunciar" data-link>＋ Anunciar</a>
-        <button id="account-btn" class="account-btn">Entrar</button
+        <a class="cart-nav" href="/carrinho" data-link aria-label="Carrinho">
+          <svg class="cart-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M3 4h2l2.2 10.2a2 2 0 0 0 2 1.6h8.9a2 2 0 0 0 1.9-1.4L22 8H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="10" cy="20" r="1.4" fill="currentColor" />
+            <circle cx="18" cy="20" r="1.4" fill="currentColor" />
+          </svg>
+          <span class="cart-count">0</span>
+        </a>
+        <button id="account-btn" class="account-btn" aria-label="Entrar">Entrar</button
         ><button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">
           ☰
         </button>
@@ -57,13 +62,9 @@
     <footer class="footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <a class="brand brand-light" href="/" data-link
-            ><span class="brand-mark">D</span
-            ><span
-              >DaBrik<span class="brand-dot">.</span
-              ><small>Classificados da sua região</small></span
-            ></a
-          >
+          <a class="brand brand-light" href="/" data-link aria-label="DaBrik início">
+            <img class="brand-logo" src="./dabrik-logo.png" alt="DaBrik" />
+          </a>
           <p>Compre e venda perto de você.<br />A DaBrik conecta.</p>
         </div>
         <div>
@@ -72,7 +73,9 @@
         </div>
         <div>
           <strong>DaBrik</strong
-          ><a href="/conta" data-link>Minha conta</a
+          ><a href="/vendedor" data-link>Área do vendedor</a
+          ><a href="/mensagens" data-link>Mensagens</a
+          ><a href="/carrinho" data-link>Carrinho</a
           ><a href="/anunciar" data-link>Anuncie grátis</a>
         </div>
         <div>

@@ -49,6 +49,36 @@ async function ensureSchema() {
           ON products (created_at DESC) WHERE status = 'ACTIVE';
         CREATE INDEX IF NOT EXISTS products_owner_created_idx
           ON products (owner_id, created_at DESC);
+        CREATE TABLE IF NOT EXISTS product_reports (
+          id UUID PRIMARY KEY,
+          product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          reason TEXT NOT NULL,
+          details TEXT NOT NULL DEFAULT '',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (product_id, reporter_id)
+        );
+        CREATE TABLE IF NOT EXISTS conversations (
+          id UUID PRIMARY KEY,
+          product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          buyer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          seller_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (product_id, buyer_id),
+          CHECK (buyer_id <> seller_id)
+        );
+        CREATE INDEX IF NOT EXISTS conversations_participants_idx
+          ON conversations (buyer_id, seller_id, updated_at DESC);
+        CREATE TABLE IF NOT EXISTS messages (
+          id UUID PRIMARY KEY,
+          conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+          sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          content TEXT NOT NULL CHECK (char_length(content) BETWEEN 1 AND 2000),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS messages_conversation_created_idx
+          ON messages (conversation_id, created_at ASC);
       `)
       .then(() => undefined)
       .catch((error) => {
@@ -164,18 +194,108 @@ async function deleteProduct(id, ownerId) {
   return result.rowCount === 1;
 }
 
+async function createProductReport(report) {
+  await ensureSchema();
+  const result = await getPool().query(
+    `INSERT INTO product_reports (id, product_id, reporter_id, reason, details, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (product_id, reporter_id) DO NOTHING RETURNING id`,
+    [report.id, report.productId, report.reporterId, report.reason, report.details, report.createdAt],
+  );
+  return result.rowCount === 1;
+}
+
+async function createConversation(conversation) {
+  await ensureSchema();
+  const result = await getPool().query(
+    `INSERT INTO conversations (id, product_id, buyer_id, seller_id)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (product_id, buyer_id) DO UPDATE SET updated_at = NOW()
+     RETURNING id`,
+    [conversation.id, conversation.productId, conversation.buyerId, conversation.sellerId],
+  );
+  return result.rows[0].id;
+}
+
+async function listConversations(userId) {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT c.id, c.product_id AS "productId", p.title AS "productTitle",
+       CASE WHEN c.buyer_id = $1 THEN seller.name ELSE buyer.name END AS "otherName",
+       (SELECT m.content FROM messages m WHERE m.conversation_id = c.id
+        ORDER BY m.created_at DESC LIMIT 1) AS "lastMessage",
+       c.updated_at AS "updatedAt"
+     FROM conversations c
+     JOIN products p ON p.id = c.product_id
+     JOIN users buyer ON buyer.id = c.buyer_id
+     JOIN users seller ON seller.id = c.seller_id
+     WHERE c.buyer_id = $1 OR c.seller_id = $1
+     ORDER BY c.updated_at DESC`,
+    [userId],
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    updatedAt: new Date(row.updatedAt).toISOString(),
+  }));
+}
+
+async function findConversationForUser(id, userId) {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT id, product_id AS "productId", buyer_id AS "buyerId", seller_id AS "sellerId"
+     FROM conversations WHERE id = $1 AND (buyer_id = $2 OR seller_id = $2)`,
+    [id, userId],
+  );
+  return result.rows[0] || null;
+}
+
+async function listMessages(conversationId) {
+  await ensureSchema();
+  const result = await getPool().query(
+    `SELECT m.id, m.sender_id AS "senderId", u.name AS "senderName", m.content,
+       m.created_at AS "createdAt"
+     FROM messages m JOIN users u ON u.id = m.sender_id
+     WHERE m.conversation_id = $1 ORDER BY m.created_at ASC`,
+    [conversationId],
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    createdAt: new Date(row.createdAt).toISOString(),
+  }));
+}
+
+async function createMessage(message, conversationId) {
+  await ensureSchema();
+  const client = getPool();
+  await client.query(
+    `INSERT INTO messages (id, conversation_id, sender_id, content, created_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [message.id, conversationId, message.senderId, message.content, message.createdAt],
+  );
+  await client.query("UPDATE conversations SET updated_at = $2 WHERE id = $1", [
+    conversationId,
+    message.createdAt,
+  ]);
+}
+
 async function close() {
   if (pool) await pool.end();
 }
 
 module.exports = {
   close,
+  createConversation,
+  createMessage,
   createProduct,
+  createProductReport,
   createUser,
   deleteProduct,
   ensureSchema,
   findUserByEmail,
   findUserById,
+  findConversationForUser,
+  listConversations,
+  listMessages,
   readStore,
   updateProduct,
   updateProductStatus,
