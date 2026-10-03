@@ -107,7 +107,7 @@ As tabelas `product_reports`, `conversations` e `messages` são criadas automati
 
 ## Notificações push de mensagens (OneSignal)
 
-Na primeira visita de cada sessão do navegador, o frontend mostra um convite próprio do DaBrik. Ao clicar em **Ativar notificações**, o navegador apresenta o pedido nativo de permissão. O usuário é associado ao `user.id` existente da DaBrik como External ID assim que entra na conta. Quando uma mensagem nova é gravada, o backend envia uma notificação privada ao outro participante da conversa. O conteúdo da mensagem não é incluído na notificação.
+Após uma conta nova ser criada, o frontend mostra um convite para ativar notificações. A escolha (ativar, recusar ou permissão bloqueada) é guardada localmente por usuário neste navegador, e o convite não aparece nos logins seguintes desse usuário. Ao aceitar, o navegador apresenta o pedido nativo de permissão. A conta é associada ao `user.id` existente da DaBrik como External ID. Notificações privadas de novas mensagens incluem uma prévia de até 400 caracteres da mensagem recebida.
 
 Para habilitar em produção:
 
@@ -115,7 +115,7 @@ Para habilitar em produção:
 2. O App ID público e o Safari Web ID enviados no snippet já estão configurados no frontend e no workflow do GitHub Pages. Se trocar a aplicação OneSignal, atualize esses dois valores em `frontend/config.js` e `.github/workflows/pages.yml` (ou defina a variável opcional `ONESIGNAL_APP_ID` no GitHub Actions).
 3. Cadastre `ONESIGNAL_APP_ID=46bd790b-9f2c-4932-86d0-7a4a0a942275`, `ONESIGNAL_REST_API_KEY` (como segredo) e `DABRIK_SITE_URL=https://llc-afk.github.io/Dabrik/` nas variáveis da Vercel.
 4. O service worker fica em `frontend/OneSignalSDKWorker.js`; na configuração Custom Code o SDK registra esse arquivo no escopo `/Dabrik/` no GitHub Pages e `/` no domínio raiz da Vercel. Não configure outro caminho de worker no painel OneSignal.
-5. Publique o frontend e o backend. A pessoa deve entrar na conta, abrir a Área do vendedor e ativar as notificações no navegador. O navegador exibirá seu próprio pedido de permissão.
+5. Publique o frontend e o backend. Após criar uma conta nova, a pessoa poderá ativar notificações no convite; o navegador exibirá seu próprio pedido de permissão.
 
 Web Push exige HTTPS (localhost é aceito para desenvolvimento), permissão concedida e assinatura no dispositivo. Uma aplicação OneSignal corresponde a uma origem; se a DaBrik também enviar notificações por um domínio próprio diferente do GitHub Pages, configure outra aplicação Web Push para esse domínio.
 

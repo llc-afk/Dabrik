@@ -317,24 +317,12 @@ function initializeOneSignal() {
   return oneSignalReady;
 }
 
-function setOneSignalButton({ loading = false, ready = false, message = "" } = {}) {
-  const button = document.querySelector("#enable-push-notifications");
-  if (!button) return;
-  button.disabled = loading;
-  button.textContent = loading ? "Preparando notificações…" : "Ativar notificações";
-  button.title = message;
-  if (ready) button.dataset.oneSignalReady = "true";
-  else delete button.dataset.oneSignalReady;
-}
-
 function syncOneSignalIdentity() {
   oneSignalSyncQueue = oneSignalSyncQueue.catch(() => {}).then(async () => {
     const initialId = token() ? getUser()?.id : null;
     if (token() && !initialId) {
-      setOneSignalButton({ message: "Entre novamente para associar sua conta às notificações." });
       return null;
     }
-    if (initialId) setOneSignalButton({ loading: true });
 
     try {
       const OneSignal = oneSignalReady ? await oneSignalReady : await initializeOneSignal();
@@ -348,37 +336,39 @@ function syncOneSignalIdentity() {
         if (desiredId) await OneSignal.login(String(desiredId));
         oneSignalExternalId = desiredId || null;
       }
-      setOneSignalButton({ ready: !desiredId || oneSignalExternalId === String(desiredId) });
       return OneSignal;
     } catch (error) {
       console.warn("Não foi possível sincronizar a conta com OneSignal.", error);
-      setOneSignalButton({ message: "Não foi possível conectar. Tente ativar novamente." });
       return null;
     }
   });
   return oneSignalSyncQueue;
 }
 
-function notificationSettingsMarkup() {
-  if (!ONESIGNAL_APP_ID) return "";
-  return `<section class="content-panel notification-settings"><div><strong>Notificações de mensagens</strong><p>Receba um aviso quando alguém responder suas conversas.</p></div><button id="enable-push-notifications" class="btn-primary" disabled>Preparando notificações…</button></section>`;
+function savePushPromptResponse(response) {
+  const userId = getUser()?.id;
+  if (!userId) return;
+  localStorage.setItem(`dabrik-push-choice:${userId}`, response);
+  sessionStorage.removeItem("dabrik-new-account-push-user");
+  document.querySelector("#push-permission-prompt")?.remove();
 }
 
 function showAutomaticPushPrompt() {
   if (!ONESIGNAL_APP_ID || !oneSignalInstance || !oneSignalInstance.Notifications.isPushSupported()) return;
-  if (typeof Notification === "undefined" || Notification.permission !== "default" || sessionStorage.getItem("dabrik-push-prompt-seen")) return;
-  sessionStorage.setItem("dabrik-push-prompt-seen", "1");
+  const userId = String(getUser()?.id || "");
+  const newAccountId = sessionStorage.getItem("dabrik-new-account-push-user");
+  if (!userId || newAccountId !== userId || localStorage.getItem(`dabrik-push-choice:${userId}`) || document.querySelector("#push-permission-prompt")) return;
 
   document.body.insertAdjacentHTML("beforeend", `<div class="push-prompt-backdrop" id="push-permission-prompt" role="presentation"><section class="push-prompt-card" role="dialog" aria-modal="true" aria-labelledby="push-prompt-title"><button class="push-prompt-close" type="button" aria-label="Fechar">×</button><span class="push-prompt-icon" aria-hidden="true">♧</span><h2 id="push-prompt-title">Fique por dentro das mensagens</h2><p>Ative as notificações para saber quando alguém responder suas conversas no DaBrik.</p><button class="btn-primary wide" id="push-prompt-allow" type="button">Ativar notificações</button><button class="push-prompt-later" id="push-prompt-later" type="button">Agora não</button></section></div>`);
 
-  const close = () => document.querySelector("#push-permission-prompt")?.remove();
-  document.querySelector(".push-prompt-close")?.addEventListener("click", close);
-  document.querySelector("#push-prompt-later")?.addEventListener("click", close);
+  const decline = () => savePushPromptResponse("declined");
+  document.querySelector(".push-prompt-close")?.addEventListener("click", decline);
+  document.querySelector("#push-prompt-later")?.addEventListener("click", decline);
   document.querySelector("#push-prompt-allow")?.addEventListener("click", (event) => {
     enablePushNotifications(event.currentTarget);
   });
   document.querySelector("#push-permission-prompt")?.addEventListener("click", (event) => {
-    if (event.target.id === "push-permission-prompt") close();
+    if (event.target.id === "push-permission-prompt") decline();
   });
 }
 
@@ -391,13 +381,11 @@ async function enablePushNotifications(button) {
   if (!oneSignalInstance || (currentId && oneSignalExternalId !== String(currentId))) {
     button.disabled = true;
     button.textContent = "Preparando notificações…";
-    setOneSignalButton({ loading: true });
     const synchronized = await syncOneSignalIdentity();
     currentId = token() ? getUser()?.id : null;
     if (!synchronized || (currentId && oneSignalExternalId !== String(currentId))) {
       button.disabled = false;
       button.textContent = "Ativar notificações";
-      setOneSignalButton({ message: "Não foi possível conectar. Tente novamente." });
       toast("Não foi possível conectar as notificações. Tente novamente.");
       return;
     }
@@ -407,13 +395,12 @@ async function enablePushNotifications(button) {
   if (!OneSignal || !OneSignal.Notifications.isPushSupported()) {
     button.disabled = false;
     button.textContent = "Ativar notificações";
-    setOneSignalButton({ ready: true });
     return toast("Este navegador não oferece suporte a notificações push.");
   }
   if (typeof Notification !== "undefined" && Notification.permission === "denied") {
     button.disabled = false;
     button.textContent = "Ativar notificações";
-    setOneSignalButton({ ready: true });
+    savePushPromptResponse("blocked");
     return toast("As notificações estão bloqueadas nas permissões do navegador.");
   }
 
@@ -430,17 +417,16 @@ async function enablePushNotifications(button) {
     toast(subscribed
       ? "Notificações de mensagens ativadas neste navegador."
       : "Não foi possível confirmar a assinatura. Tente novamente.");
-    if (subscribed) document.querySelector("#push-permission-prompt")?.remove();
+    if (subscribed) savePushPromptResponse("enabled");
+    else if (typeof Notification !== "undefined" && Notification.permission === "denied") savePushPromptResponse("blocked");
   } catch (error) {
     button.disabled = false;
     button.textContent = "Ativar notificações";
-    setOneSignalButton({ ready: true });
     toast(error.message || "Não foi possível ativar as notificações.");
   } finally {
     if (button.isConnected && (button.textContent === "Ativando notificações…" || button.textContent === "Preparando notificações…")) {
       button.disabled = false;
       button.textContent = "Ativar notificações";
-      setOneSignalButton({ ready: true });
     }
   }
 }
@@ -616,9 +602,6 @@ async function render() {
     html = `${pageTop("Página não encontrada", "Volte aos anúncios da sua região.")}<div class="container">${emptyState("Não encontramos essa página.", "Acesse os anúncios e continue procurando.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/produtos">Ver anúncios</a></p></div>`;
   }
   document.querySelector("#app").innerHTML = html;
-  if (ONESIGNAL_APP_ID && token()) {
-    document.querySelector("#logout-btn")?.insertAdjacentHTML("beforebegin", notificationSettingsMarkup());
-  }
   const initialChatMessages = document.querySelector("#chat-messages");
   if (initialChatMessages) initialChatMessages.scrollTop = initialChatMessages.scrollHeight;
   const navPath = path === "/produtos" ? "explore"
@@ -633,10 +616,10 @@ async function render() {
     else link.removeAttribute("aria-current");
   });
   updateAccountButton();
-  syncOneSignalIdentity();
+  const oneSignalSync = syncOneSignalIdentity();
   if (ONESIGNAL_APP_ID) {
-    initializeOneSignal()
-      .then(showAutomaticPushPrompt)
+    oneSignalSync
+      .then((OneSignal) => { if (OneSignal) showAutomaticPushPrompt(); })
       .catch((error) => console.warn("Não foi possível inicializar notificações push.", error));
   }
   updateCartCount();
@@ -720,10 +703,6 @@ async function compressImage(file) {
 }
 
 function bindPage() {
-  document.querySelector("#enable-push-notifications")?.addEventListener("click", (event) => {
-    enablePushNotifications(event.currentTarget);
-  });
-
   document.querySelectorAll("#home-search, #catalog-search").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -772,6 +751,7 @@ function bindPage() {
         });
         localStorage.setItem("dabrik-token", result.token);
         localStorage.setItem("dabrik-user", JSON.stringify(result.user));
+        if (register) sessionStorage.setItem("dabrik-new-account-push-user", String(result.user.id));
         toast(
           register
             ? "Conta criada. Boas-vindas à DaBrik!"

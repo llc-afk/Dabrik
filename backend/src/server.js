@@ -89,12 +89,17 @@ async function readStore() {
   return usesDatabase ? database.readStore() : readLocalStore();
 }
 
-async function sendChatPushNotification(userId, conversationId) {
+async function sendChatPushNotification(userId, conversationId, messageContent) {
   const appId = process.env.ONESIGNAL_APP_ID;
   const apiKey = process.env.ONESIGNAL_REST_API_KEY;
   if (!appId || !apiKey) return;
 
   try {
+    const messageCharacters = [...String(messageContent || "").trim()];
+    const messagePreview = messageCharacters.slice(0, 400).join("");
+    const notificationContent = messagePreview
+      ? `Mensagem: ${messagePreview}${messageCharacters.length > 400 ? "…" : ""}`
+      : "Você recebeu uma nova mensagem no DaBrik.";
     const siteUrl = new URL(process.env.DABRIK_SITE_URL || "https://llc-afk.github.io/Dabrik/");
     siteUrl.pathname = `${siteUrl.pathname.replace(/\/+$/, "")}/mensagens`;
     siteUrl.search = new URLSearchParams({ id: conversationId }).toString();
@@ -111,7 +116,7 @@ async function sendChatPushNotification(userId, conversationId) {
         target_channel: "push",
         include_aliases: { external_id: [String(userId)] },
         headings: { en: "Nova mensagem no DaBrik" },
-        contents: { en: "Você recebeu uma mensagem. Toque para abrir sua caixa de entrada." },
+        contents: { en: notificationContent },
         url: siteUrl.toString(),
       }),
       signal: AbortSignal.timeout(3000),
@@ -400,7 +405,7 @@ app.post("/api/conversations", authenticate, async (req, res, next) => {
         createdAt: new Date().toISOString(),
       }, conversationId);
     }
-    await sendChatPushNotification(product.ownerId, conversationId);
+    await sendChatPushNotification(product.ownerId, conversationId, data.content);
     res.status(201).json({ conversationId });
   } catch (error) {
     next(error);
@@ -488,7 +493,7 @@ app.post("/api/conversations/:id/messages", authenticate, async (req, res, next)
       conversation.updatedAt = message.createdAt;
       saveStore(local);
     }
-    await sendChatPushNotification(recipientId, req.params.id);
+    await sendChatPushNotification(recipientId, req.params.id, data.content);
     res.status(201).json({ message });
   } catch (error) {
     next(error);
