@@ -318,13 +318,17 @@ img { max-width: 100%; }
 .notification-settings strong { color: var(--text); }
 .notification-settings p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 640px) { .notification-settings { align-items: stretch; flex-direction: column; } }
-.push-prompt-backdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(4 8 6 / 72%); backdrop-filter: blur(5px); }
-.push-prompt-card { position: relative; width: min(100%, 400px); padding: 30px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow-lg); text-align: center; }
-.push-prompt-icon { display: grid; width: 54px; height: 54px; margin: 0 auto 16px; place-items: center; border-radius: 17px; background: rgb(25 168 90 / 14%); color: var(--primary-light); font-size: 28px; }
-.push-prompt-card h2 { margin: 0; color: var(--text); font-size: 21px; }
-.push-prompt-card p { margin: 10px 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
+.push-prompt-backdrop { position: fixed; z-index: 110; inset: auto 20px 20px auto; display: block; width: min(380px, calc(100vw - 32px)); padding: 0; background: transparent; pointer-events: none; }
+.push-prompt-card { position: relative; width: 100%; padding: 22px; border: 1px solid var(--border); border-radius: 17px; background: var(--card); box-shadow: var(--shadow-lg); text-align: left; pointer-events: auto; }
+.push-prompt-icon { display: grid; width: 40px; height: 40px; margin: 0 0 12px; place-items: center; border-radius: 13px; background: rgb(25 168 90 / 14%); color: var(--primary-light); font-size: 22px; }
+.push-prompt-card h2 { margin: 0; color: var(--text); font-size: 18px; }
+.push-prompt-card p { margin: 8px 0 16px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .push-prompt-close { position: absolute; top: 9px; right: 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 25px; }
 .push-prompt-later { margin-top: 13px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; }
+.push-denied-guidance { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; max-width: 1160px; margin: 14px auto 0; padding: 14px 17px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); color: var(--text-secondary); }
+.push-denied-guidance strong { color: var(--text); font-size: 13px; }
+.push-denied-guidance p { margin: 4px 0 0; font-size: 12px; line-height: 1.5; }
+.push-denied-guidance button { flex: 0 0 auto; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 20px; }
 
 .cart-page { display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 16px; padding-top: 25px; padding-bottom: 85px; }
 .cart-items { display: grid; gap: 9px; }
@@ -514,6 +518,9 @@ img { max-width: 100%; }
   .footer-brand { grid-column: 1 / -1; }
   .footer-bottom { flex-direction: column; gap: 4px; margin-top: 21px; font-size: 8px; }
   .toast { right: 12px; bottom: 82px; left: 12px; max-width: none; text-align: center; }
+  .push-prompt-backdrop { right: 12px; bottom: 82px; left: 12px; width: auto; }
+  .push-prompt-card { padding: 18px; }
+  .push-denied-guidance { margin: 12px 17px 0; }
   .loading-shell { padding-inline: 17px; }
 }
 @media (max-width: 390px) {

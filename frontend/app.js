@@ -261,6 +261,8 @@ let oneSignalReady = null;
 let oneSignalExternalId = null;
 let oneSignalInstance = null;
 let oneSignalSyncQueue = Promise.resolve();
+let oneSignalPushFlow = null;
+let pushAutoAttemptedUserId = null;
 
 function initializeOneSignal() {
   if (!ONESIGNAL_APP_ID) return Promise.resolve(null);
@@ -348,18 +350,22 @@ function syncOneSignalIdentity() {
 function savePushPromptResponse(response) {
   const userId = getUser()?.id;
   if (!userId) return;
-  localStorage.setItem(`dabrik-push-choice:${userId}`, response);
+  if (response === "declined") {
+    sessionStorage.setItem(`dabrik-push-dismissed:${userId}`, "1");
+  } else {
+    localStorage.setItem(`dabrik-push-choice:${userId}`, response);
+  }
   sessionStorage.removeItem("dabrik-new-account-push-user");
   document.querySelector("#push-permission-prompt")?.remove();
+  if (response === "enabled") document.querySelector("#push-denied-guidance")?.remove();
 }
 
 function showAutomaticPushPrompt() {
   if (!ONESIGNAL_APP_ID || !oneSignalInstance || !oneSignalInstance.Notifications.isPushSupported()) return;
   const userId = String(getUser()?.id || "");
-  const newAccountId = sessionStorage.getItem("dabrik-new-account-push-user");
-  if (!userId || newAccountId !== userId || localStorage.getItem(`dabrik-push-choice:${userId}`) || document.querySelector("#push-permission-prompt")) return;
+  if (!userId || sessionStorage.getItem(`dabrik-push-dismissed:${userId}`) || document.querySelector("#push-permission-prompt")) return;
 
-  document.body.insertAdjacentHTML("beforeend", `<div class="push-prompt-backdrop" id="push-permission-prompt" role="presentation"><section class="push-prompt-card" role="dialog" aria-modal="true" aria-labelledby="push-prompt-title"><button class="push-prompt-close" type="button" aria-label="Fechar">×</button><span class="push-prompt-icon" aria-hidden="true">♧</span><h2 id="push-prompt-title">Fique por dentro das mensagens</h2><p>Ative as notificações para saber quando alguém responder suas conversas no DaBrik.</p><button class="btn-primary wide" id="push-prompt-allow" type="button">Ativar notificações</button><button class="push-prompt-later" id="push-prompt-later" type="button">Agora não</button></section></div>`);
+  document.body.insertAdjacentHTML("beforeend", `<div class="push-prompt-backdrop" id="push-permission-prompt" role="presentation"><section class="push-prompt-card" aria-labelledby="push-prompt-title"><button class="push-prompt-close" type="button" aria-label="Fechar">×</button><span class="push-prompt-icon" aria-hidden="true">♧</span><h2 id="push-prompt-title">Fique por dentro das mensagens</h2><p>Ative as notificações para saber quando alguém responder suas conversas no DaBrik.</p><button class="btn-primary wide" id="push-prompt-allow" type="button">Ativar notificações</button><button class="push-prompt-later" id="push-prompt-later" type="button">Agora não</button></section></div>`);
 
   const decline = () => savePushPromptResponse("declined");
   document.querySelector(".push-prompt-close")?.addEventListener("click", decline);
@@ -370,6 +376,90 @@ function showAutomaticPushPrompt() {
   document.querySelector("#push-permission-prompt")?.addEventListener("click", (event) => {
     if (event.target.id === "push-permission-prompt") decline();
   });
+}
+
+function pushPermissionState(OneSignal) {
+  if (typeof Notification !== "undefined") return Notification.permission;
+  return OneSignal.Notifications.permission ? "granted" : "default";
+}
+
+function showDeniedPushGuidance() {
+  const userId = String(getUser()?.id || "");
+  const app = document.querySelector("#app");
+  if (!userId || !app || sessionStorage.getItem(`dabrik-push-denied-dismissed:${userId}`) || document.querySelector("#push-denied-guidance")) return;
+  app.insertAdjacentHTML("afterbegin", `<aside class="push-denied-guidance" id="push-denied-guidance" role="status"><div><strong>Notificações bloqueadas neste navegador</strong><p>Para reativá-las, abra as permissões deste site nas configurações do navegador e permita notificações.</p></div><button type="button" aria-label="Fechar orientação">×</button></aside>`);
+  document.querySelector("#push-denied-guidance button")?.addEventListener("click", () => {
+    sessionStorage.setItem(`dabrik-push-denied-dismissed:${userId}`, "1");
+    document.querySelector("#push-denied-guidance")?.remove();
+  });
+}
+
+async function finishPushActivation(OneSignal, expectedUserId) {
+  const synchronized = await syncOneSignalIdentity();
+  const currentUserId = String(getUser()?.id || "");
+  if (!synchronized || currentUserId !== expectedUserId || String(oneSignalExternalId || "") !== expectedUserId) return false;
+  if (pushPermissionState(OneSignal) !== "granted") return false;
+  if (!OneSignal.User.PushSubscription.optedIn) await OneSignal.User.PushSubscription.optIn();
+  return Boolean(OneSignal.User.PushSubscription.optedIn);
+}
+
+function ensurePushPermissionFlow(OneSignal) {
+  if (oneSignalPushFlow) return oneSignalPushFlow;
+  const userId = String(getUser()?.id || "");
+  if (!token() || !userId || !OneSignal?.Notifications?.isPushSupported()) return Promise.resolve();
+
+  oneSignalPushFlow = (async () => {
+    let permission = pushPermissionState(OneSignal);
+    if (permission === "granted") {
+      document.querySelector("#push-permission-prompt")?.remove();
+      document.querySelector("#push-denied-guidance")?.remove();
+      try {
+        const wasOptedIn = Boolean(OneSignal.User.PushSubscription.optedIn);
+        if (await finishPushActivation(OneSignal, userId)) {
+          savePushPromptResponse("enabled");
+          if (!wasOptedIn) toast("Notificações de mensagens ativadas neste navegador.");
+        }
+      } catch (error) {
+        console.warn("Não foi possível ativar a assinatura push existente.", error);
+        toast("A permissão está ativa, mas não foi possível concluir a assinatura de notificações.");
+      }
+      return;
+    }
+    if (permission === "denied") {
+      document.querySelector("#push-permission-prompt")?.remove();
+      showDeniedPushGuidance();
+      return;
+    }
+
+    document.querySelector("#push-denied-guidance")?.remove();
+    if (pushAutoAttemptedUserId !== userId) {
+      pushAutoAttemptedUserId = userId;
+      try {
+        await OneSignal.Notifications.requestPermission();
+      } catch (error) {
+        console.info("O navegador exige uma ação do usuário para solicitar notificações.", error);
+      }
+    }
+
+    permission = pushPermissionState(OneSignal);
+    if (permission === "granted") {
+      try {
+        if (await finishPushActivation(OneSignal, userId)) {
+          savePushPromptResponse("enabled");
+          toast("Notificações de mensagens ativadas neste navegador.");
+        }
+      } catch (error) {
+        console.warn("Não foi possível concluir a assinatura push.", error);
+      }
+    } else if (permission === "denied") {
+      showDeniedPushGuidance();
+    } else {
+      showAutomaticPushPrompt();
+    }
+  })().finally(() => {
+    oneSignalPushFlow = null;
+  });
+  return oneSignalPushFlow;
 }
 
 async function enablePushNotifications(button) {
@@ -401,24 +491,25 @@ async function enablePushNotifications(button) {
     button.disabled = false;
     button.textContent = "Ativar notificações";
     savePushPromptResponse("blocked");
+    showDeniedPushGuidance();
     return toast("As notificações estão bloqueadas nas permissões do navegador.");
   }
 
   button.disabled = true;
   button.textContent = "Ativando notificações…";
   try {
-    const permissionRequest = OneSignal.Notifications.requestPermission();
-    await permissionRequest;
-    if (OneSignal.Notifications.permission) await OneSignal.User.PushSubscription.optIn();
-
-    const subscribed = Boolean(OneSignal.User.PushSubscription.optedIn);
+    if (pushPermissionState(OneSignal) !== "granted") await OneSignal.Notifications.requestPermission();
+    const subscribed = await finishPushActivation(OneSignal, String(currentId));
     button.textContent = subscribed ? "Notificações ativadas" : "Ativar notificações";
     button.disabled = subscribed;
     toast(subscribed
       ? "Notificações de mensagens ativadas neste navegador."
       : "Não foi possível confirmar a assinatura. Tente novamente.");
     if (subscribed) savePushPromptResponse("enabled");
-    else if (typeof Notification !== "undefined" && Notification.permission === "denied") savePushPromptResponse("blocked");
+    else if (pushPermissionState(OneSignal) === "denied") {
+      savePushPromptResponse("blocked");
+      showDeniedPushGuidance();
+    }
   } catch (error) {
     button.disabled = false;
     button.textContent = "Ativar notificações";
@@ -619,7 +710,7 @@ async function render() {
   const oneSignalSync = syncOneSignalIdentity();
   if (ONESIGNAL_APP_ID) {
     oneSignalSync
-      .then((OneSignal) => { if (OneSignal) showAutomaticPushPrompt(); })
+      .then((OneSignal) => { if (OneSignal) return ensurePushPermissionFlow(OneSignal); })
       .catch((error) => console.warn("Não foi possível inicializar notificações push.", error));
   }
   updateCartCount();
