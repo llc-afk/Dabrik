@@ -105,4 +105,18 @@ Esta cópia de teste inclui:
 
 As tabelas `product_reports`, `conversations` e `messages` são criadas automaticamente no PostgreSQL já configurado no projeto. Para o modo local sem `DATABASE_URL`, essas novas informações ficam no arquivo local da cópia.
 
+## Notificações push de mensagens (OneSignal)
+
+O frontend registra o navegador no OneSignal após a pessoa clicar em **Ativar neste navegador** na Área do vendedor. O usuário é associado ao `user.id` existente da DaBrik como External ID. Quando uma mensagem nova é gravada, o backend envia uma notificação privada ao outro participante da conversa. O conteúdo da mensagem não é incluído na notificação.
+
+Para habilitar em produção:
+
+1. No OneSignal, configure uma aplicação **Web Push** com integração **Custom Code** e Site URL igual à origem do frontend, `https://llc-afk.github.io`.
+2. O App ID público e o Safari Web ID enviados no snippet já estão configurados no frontend e no workflow do GitHub Pages. Se trocar a aplicação OneSignal, atualize esses dois valores em `frontend/config.js` e `.github/workflows/pages.yml` (ou defina a variável opcional `ONESIGNAL_APP_ID` no GitHub Actions).
+3. Cadastre `ONESIGNAL_APP_ID=46bd790b-9f2c-4932-86d0-7a4a0a942275`, `ONESIGNAL_REST_API_KEY` (como segredo) e `DABRIK_SITE_URL=https://llc-afk.github.io/Dabrik/` nas variáveis da Vercel.
+4. O service worker fica em `frontend/OneSignalSDKWorker.js`; na configuração Custom Code o SDK registra esse arquivo no escopo `/Dabrik/` no GitHub Pages e `/` no domínio raiz da Vercel. Não configure outro caminho de worker no painel OneSignal.
+5. Publique o frontend e o backend. A pessoa deve entrar na conta, abrir a Área do vendedor e ativar as notificações no navegador. O navegador exibirá seu próprio pedido de permissão.
+
+Web Push exige HTTPS (localhost é aceito para desenvolvimento), permissão concedida e assinatura no dispositivo. Uma aplicação OneSignal corresponde a uma origem; se a DaBrik também enviar notificações por um domínio próprio diferente do GitHub Pages, configure outra aplicação Web Push para esse domínio.
+
 Para abrir localmente, instale as dependências com `npm ci` e rode `npm run dev`. A cópia foi criada sem credenciais, banco JSON de produção ou uploads do projeto original.

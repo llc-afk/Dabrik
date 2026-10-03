@@ -314,6 +314,10 @@ img { max-width: 100%; }
 .seller-chat-row span { overflow: hidden; color: var(--text-tertiary); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .seller-messages-link { margin-top: 15px; }
 .logout-button { margin-top: 20px; color: #e89191; }
+.notification-settings { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; }
+.notification-settings strong { color: var(--text); }
+.notification-settings p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
+@media (max-width: 640px) { .notification-settings { align-items: stretch; flex-direction: column; } }
 
 .cart-page { display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 16px; padding-top: 25px; padding-bottom: 85px; }
 .cart-items { display: grid; gap: 9px; }

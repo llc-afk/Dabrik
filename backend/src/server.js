@@ -89,6 +89,39 @@ async function readStore() {
   return usesDatabase ? database.readStore() : readLocalStore();
 }
 
+async function sendChatPushNotification(userId, conversationId) {
+  const appId = process.env.ONESIGNAL_APP_ID;
+  const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+  if (!appId || !apiKey) return;
+
+  try {
+    const siteUrl = new URL(process.env.DABRIK_SITE_URL || "https://llc-afk.github.io/Dabrik/");
+    siteUrl.pathname = `${siteUrl.pathname.replace(/\/+$/, "")}/mensagens`;
+    siteUrl.search = new URLSearchParams({ id: conversationId }).toString();
+    siteUrl.hash = "";
+
+    const response = await fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: {
+        Authorization: `Key ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        app_id: appId,
+        target_channel: "push",
+        include_aliases: { external_id: [String(userId)] },
+        headings: { pt: "Nova mensagem no DaBrik" },
+        contents: { pt: "Você recebeu uma mensagem. Toque para abrir sua caixa de entrada." },
+        url: siteUrl.toString(),
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) console.warn(`[OneSignal] envio de push falhou (HTTP ${response.status}).`);
+  } catch (error) {
+    console.warn(`[OneSignal] envio de push indisponível: ${error.message}`);
+  }
+}
+
 function publicUser(user) {
   return { id: user.id, name: user.name, phone: user.phone };
 }
@@ -357,6 +390,7 @@ app.post("/api/conversations", authenticate, async (req, res, next) => {
         createdAt: new Date().toISOString(),
       }, conversationId);
     }
+    await sendChatPushNotification(product.ownerId, conversationId);
     res.status(201).json({ conversationId });
   } catch (error) {
     next(error);
@@ -416,6 +450,7 @@ app.get("/api/conversations/:id/messages", authenticate, async (req, res) => {
 app.post("/api/conversations/:id/messages", authenticate, async (req, res, next) => {
   try {
     const data = z.object({ content: z.string().trim().min(1).max(2000) }).parse(req.body);
+    let recipientId;
     const message = {
       id: crypto.randomUUID(),
       senderId: req.user.sub,
@@ -425,6 +460,9 @@ app.post("/api/conversations/:id/messages", authenticate, async (req, res, next)
     if (usesDatabase) {
       const conversation = await database.findConversationForUser(req.params.id, req.user.sub);
       if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+      recipientId = conversation.buyerId === req.user.sub
+        ? conversation.sellerId
+        : conversation.buyerId;
       await database.createMessage(message, conversation.id);
     } else {
       const local = readLocalStore();
@@ -433,10 +471,14 @@ app.post("/api/conversations/:id/messages", authenticate, async (req, res, next)
           (item.buyerId === req.user.sub || item.sellerId === req.user.sub),
       );
       if (!conversation) return res.status(404).json({ error: "Conversa não encontrada." });
+      recipientId = conversation.buyerId === req.user.sub
+        ? conversation.sellerId
+        : conversation.buyerId;
       local.messages.push({ ...message, conversationId: conversation.id });
       conversation.updatedAt = message.createdAt;
       saveStore(local);
     }
+    await sendChatPushNotification(recipientId, req.params.id);
     res.status(201).json({ message });
   } catch (error) {
     next(error);

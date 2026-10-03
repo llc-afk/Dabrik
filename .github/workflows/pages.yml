@@ -27,12 +27,15 @@ jobs:
       - name: Build frontend artifact
         env:
           DABRIK_API_BASE_URL: ${{ vars.DABRIK_API_BASE_URL }}
+          ONESIGNAL_APP_ID: ${{ vars.ONESIGNAL_APP_ID }}
         run: |
           mkdir -p _site
           cp -R frontend/. _site/
           node <<'NODE'
           const fs = require('node:fs');
           const raw = (process.env.DABRIK_API_BASE_URL || '').trim();
+          const oneSignalAppId = (process.env.ONESIGNAL_APP_ID || '46bd790b-9f2c-4932-86d0-7a4a0a942275').trim();
+          const oneSignalSafariWebId = 'web.onesignal.auto.0893d0c7-c315-4498-a086-d9071f0f29e9';
           let apiBaseUrl = '';
           if (raw) {
             const api = new URL(raw);
@@ -41,7 +44,7 @@ jobs:
             }
             apiBaseUrl = api.origin;
           }
-          fs.writeFileSync('_site/config.js', `window.DABRIK_CONFIG=${JSON.stringify({ basePath: '/Dabrik/', apiBaseUrl })};\n`);
+          fs.writeFileSync('_site/config.js', `window.DABRIK_CONFIG=${JSON.stringify({ basePath: '/Dabrik/', apiBaseUrl, oneSignalAppId, oneSignalSafariWebId })};\n`);
           fs.copyFileSync('_site/index.html', '_site/404.html');
           NODE
 

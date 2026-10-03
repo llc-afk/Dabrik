@@ -1,6 +1,8 @@
 const siteConfig = window.DABRIK_CONFIG || {};
 const BASE_PATH = normalizeBasePath(siteConfig.basePath || "/");
 const API_BASE_URL = String(siteConfig.apiBaseUrl || "").replace(/\/+$/, "");
+const ONESIGNAL_APP_ID = String(siteConfig.oneSignalAppId || "").trim();
+const ONESIGNAL_SAFARI_WEB_ID = String(siteConfig.oneSignalSafariWebId || "").trim();
 const API = API_BASE_URL ? `${API_BASE_URL}/api` : `${BASE_PATH}api`.replace(/\/+/g, "/");
 const CART_KEY = "dabrik-cart";
 document.querySelectorAll(".brand-logo").forEach((logo) => {
@@ -255,6 +257,98 @@ function getUser() {
   }
 }
 
+let oneSignalReady = null;
+let oneSignalExternalId = null;
+let oneSignalInstance = null;
+let oneSignalSyncQueue = Promise.resolve();
+
+function initializeOneSignal() {
+  if (!ONESIGNAL_APP_ID) return Promise.resolve(null);
+  if (oneSignalReady) return oneSignalReady;
+
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  oneSignalReady = new Promise((resolve, reject) => {
+    window.OneSignalDeferred.push(async (OneSignal) => {
+      try {
+        await OneSignal.init({
+          appId: ONESIGNAL_APP_ID,
+          ...(ONESIGNAL_SAFARI_WEB_ID ? { safari_web_id: ONESIGNAL_SAFARI_WEB_ID } : {}),
+          serviceWorkerPath: `${BASE_PATH.replace(/^\/+/, "")}OneSignalSDKWorker.js`,
+          serviceWorkerParam: { scope: BASE_PATH },
+          allowLocalhostAsSecureOrigin: ["localhost", "127.0.0.1"].includes(location.hostname),
+          autoResubscribe: true,
+        });
+        oneSignalInstance = OneSignal;
+        resolve(OneSignal);
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    const script = document.createElement("script");
+    script.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+    script.defer = true;
+    script.onerror = () => reject(new Error("Não foi possível carregar o OneSignal."));
+    document.head.appendChild(script);
+  });
+  return oneSignalReady;
+}
+
+function syncOneSignalIdentity() {
+  oneSignalSyncQueue = oneSignalSyncQueue.catch(() => {}).then(async () => {
+    let desiredId = token() ? getUser()?.id : null;
+    if (!desiredId && !oneSignalReady) return;
+    if (desiredId && !ONESIGNAL_APP_ID) return;
+
+    try {
+      const OneSignal = oneSignalReady ? await oneSignalReady : await initializeOneSignal();
+      if (!OneSignal) return;
+      desiredId = token() ? getUser()?.id : null;
+      if (String(desiredId || "") !== String(oneSignalExternalId || "")) {
+        if (oneSignalExternalId) await OneSignal.logout();
+        if (desiredId) await OneSignal.login(String(desiredId));
+        oneSignalExternalId = desiredId || null;
+      }
+      const button = document.querySelector("#enable-push-notifications");
+      if (button && oneSignalExternalId) button.disabled = false;
+    } catch (error) {
+      console.warn("Não foi possível sincronizar a conta com OneSignal.", error);
+    }
+  });
+  return oneSignalSyncQueue;
+}
+
+function notificationSettingsMarkup() {
+  if (!ONESIGNAL_APP_ID) return "";
+  return `<section class="content-panel notification-settings"><div><strong>Notificações de mensagens</strong><p>Receba um aviso quando alguém responder suas conversas.</p></div><button id="enable-push-notifications" class="btn-primary" disabled>Preparando notificações…</button></section>`;
+}
+
+function enablePushNotifications(button) {
+  if (!ONESIGNAL_APP_ID) return toast("As notificações ainda não foram configuradas.");
+  const OneSignal = oneSignalInstance;
+  if (!OneSignal || oneSignalExternalId !== String(getUser()?.id || "")) {
+    return toast("Aguarde a conexão das notificações e tente novamente.");
+  }
+  if (!OneSignal.Notifications.isPushSupported()) {
+    return toast("Este navegador não oferece suporte a notificações push.");
+  }
+  if (Notification.permission === "denied") {
+    return toast("As notificações estão bloqueadas nas permissões do navegador.");
+  }
+  button.disabled = true;
+  Promise.resolve(OneSignal.Notifications.requestPermission())
+    .then(async () => {
+      if (OneSignal.Notifications.permission) {
+        await OneSignal.User.PushSubscription.optIn();
+      }
+      toast(OneSignal.User.PushSubscription.optedIn
+        ? "Notificações de mensagens ativadas neste navegador."
+        : "Não foi possível ativar as notificações.");
+    })
+    .catch((error) => toast(error.message || "Não foi possível ativar as notificações."))
+    .finally(() => { button.disabled = false; });
+}
+
 function authPage(register = false) {
   return `${pageTop(register ? "Criar conta grátis" : "Entrar", register ? "Crie sua conta para publicar e gerenciar anúncios." : "Entre para falar com a comunidade DaBrik.")}<div class="container auth-container"><div class="content-panel"><form id="auth-form" class="form-grid"><div class="field span-2"><label>E-mail</label><input required name="email" type="email" autocomplete="email" placeholder="voce@email.com"></div>${register ? `<div class="field span-2"><label>Seu nome</label><input required name="name" minlength="2" maxlength="100" autocomplete="name" placeholder="Nome e sobrenome"></div><div class="field span-2"><label>WhatsApp com DDD</label><input required name="phone" type="tel" autocomplete="tel" placeholder="(42) 99999-9999"></div>` : ""}<div class="field span-2"><label>Senha</label><input required name="password" type="password" minlength="${register ? 10 : 1}" autocomplete="${register ? "new-password" : "current-password"}" placeholder="${register ? "Pelo menos 10 caracteres" : "Sua senha"}"></div><div class="span-2"><button class="btn-primary wide">${register ? "Criar minha conta" : "Entrar"}</button></div></form><p class="muted-note">${register ? "Já tem conta?" : "Novo por aqui?"} <a class="text-link" data-link href="${register ? "/entrar" : "/cadastro"}">${register ? "Entrar" : "Criar uma conta"}</a></p><div id="auth-error" class="notice" hidden></div></div></div>`;
 }
@@ -426,6 +520,9 @@ async function render() {
     html = `${pageTop("Página não encontrada", "Volte aos anúncios da sua região.")}<div class="container">${emptyState("Não encontramos essa página.", "Acesse os anúncios e continue procurando.", false)}<p class="auth-actions"><a class="btn-primary" data-link href="/produtos">Ver anúncios</a></p></div>`;
   }
   document.querySelector("#app").innerHTML = html;
+  if (ONESIGNAL_APP_ID && token()) {
+    document.querySelector("#logout-btn")?.insertAdjacentHTML("beforebegin", notificationSettingsMarkup());
+  }
   const initialChatMessages = document.querySelector("#chat-messages");
   if (initialChatMessages) initialChatMessages.scrollTop = initialChatMessages.scrollHeight;
   const navPath = path === "/produtos" ? "explore"
@@ -440,6 +537,7 @@ async function render() {
     else link.removeAttribute("aria-current");
   });
   updateAccountButton();
+  syncOneSignalIdentity();
   updateCartCount();
   bindPage();
   if (path === "/mensagens" && token()) scheduleChatPolling();
@@ -521,6 +619,10 @@ async function compressImage(file) {
 }
 
 function bindPage() {
+  document.querySelector("#enable-push-notifications")?.addEventListener("click", (event) => {
+    enablePushNotifications(event.currentTarget);
+  });
+
   document.querySelectorAll("#home-search, #catalog-search").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
