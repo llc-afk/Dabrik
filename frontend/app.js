@@ -432,6 +432,9 @@ function ensurePushPermissionFlow(OneSignal) {
     }
 
     document.querySelector("#push-denied-guidance")?.remove();
+    // Render the in-app fallback before the request: some browsers leave the
+    // permission promise pending when it is called without a fresh user gesture.
+    showAutomaticPushPrompt();
     if (pushAutoAttemptedUserId !== userId) {
       pushAutoAttemptedUserId = userId;
       try {
