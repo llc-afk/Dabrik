@@ -116,7 +116,17 @@ async function sendChatPushNotification(userId, conversationId) {
       }),
       signal: AbortSignal.timeout(3000),
     });
-    if (!response.ok) console.warn(`[OneSignal] envio de push falhou (HTTP ${response.status}).`);
+    let responseBody = "";
+    try {
+      responseBody = await response.text();
+    } catch {
+      responseBody = "[corpo da resposta indisponível]";
+    }
+    if (!response.ok) {
+      console.warn(`[OneSignal] envio de push falhou (HTTP ${response.status}; userId=${userId}; resposta=${responseBody}).`);
+    } else {
+      console.info(`[OneSignal] envio de push aceito (HTTP ${response.status}; userId=${userId}).`);
+    }
   } catch (error) {
     console.warn(`[OneSignal] envio de push indisponível: ${error.message}`);
   }
