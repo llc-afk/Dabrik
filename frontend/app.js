@@ -394,6 +394,25 @@ function showDeniedPushGuidance() {
   });
 }
 
+function requiresIOSHomeScreenInstall() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isInstalled = navigator.standalone === true
+    || window.matchMedia?.("(display-mode: standalone)").matches;
+  return isIOS && !isInstalled;
+}
+
+function showIOSHomeScreenGuidance() {
+  const userId = String(getUser()?.id || "");
+  const app = document.querySelector("#app");
+  if (!userId || !app || sessionStorage.getItem(`dabrik-push-ios-install-dismissed:${userId}`) || document.querySelector("#push-ios-install-guidance")) return;
+  app.insertAdjacentHTML("afterbegin", `<aside class="push-denied-guidance" id="push-ios-install-guidance" role="status"><div><strong>Para receber notificações no iPhone ou iPad</strong><p>O Web Push requer iOS/iPadOS 16.4 ou mais recente e o site instalado na Tela de Início. No Safari, toque em Compartilhar → Adicionar à Tela de Início. Depois, abra o DaBrik pelo novo ícone e entre na sua conta para ativar as notificações.</p></div><button type="button" aria-label="Fechar orientação">×</button></aside>`);
+  document.querySelector("#push-ios-install-guidance button")?.addEventListener("click", () => {
+    sessionStorage.setItem(`dabrik-push-ios-install-dismissed:${userId}`, "1");
+    document.querySelector("#push-ios-install-guidance")?.remove();
+  });
+}
+
 async function finishPushActivation(OneSignal, expectedUserId) {
   const synchronized = await syncOneSignalIdentity();
   const currentUserId = String(getUser()?.id || "");
@@ -406,7 +425,14 @@ async function finishPushActivation(OneSignal, expectedUserId) {
 function ensurePushPermissionFlow(OneSignal) {
   if (oneSignalPushFlow) return oneSignalPushFlow;
   const userId = String(getUser()?.id || "");
-  if (!token() || !userId || !OneSignal?.Notifications?.isPushSupported()) return Promise.resolve();
+  if (!token() || !userId) return Promise.resolve();
+  if (requiresIOSHomeScreenInstall()) {
+    document.querySelector("#push-permission-prompt")?.remove();
+    showIOSHomeScreenGuidance();
+    return Promise.resolve();
+  }
+  document.querySelector("#push-ios-install-guidance")?.remove();
+  if (!OneSignal?.Notifications?.isPushSupported()) return Promise.resolve();
 
   oneSignalPushFlow = (async () => {
     let permission = pushPermissionState(OneSignal);
