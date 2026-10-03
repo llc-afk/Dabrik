@@ -267,8 +267,19 @@ function initializeOneSignal() {
   if (oneSignalReady) return oneSignalReady;
 
   window.OneSignalDeferred = window.OneSignalDeferred || [];
-  oneSignalReady = new Promise((resolve, reject) => {
+  const initialization = new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutId;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      callback(value);
+    };
+    timeoutId = setTimeout(() => finish(reject, new Error("A conexão com OneSignal demorou demais.")), 15000);
+
     window.OneSignalDeferred.push(async (OneSignal) => {
+      if (settled) return;
       try {
         await OneSignal.init({
           appId: ONESIGNAL_APP_ID,
@@ -278,41 +289,71 @@ function initializeOneSignal() {
           allowLocalhostAsSecureOrigin: ["localhost", "127.0.0.1"].includes(location.hostname),
           autoResubscribe: true,
         });
+        if (settled) return;
         oneSignalInstance = OneSignal;
-        resolve(OneSignal);
+        finish(resolve, OneSignal);
       } catch (error) {
-        reject(error);
+        finish(reject, error);
       }
     });
 
-    const script = document.createElement("script");
-    script.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
-    script.defer = true;
-    script.onerror = () => reject(new Error("Não foi possível carregar o OneSignal."));
-    document.head.appendChild(script);
+    if (!document.querySelector("#onesignal-web-sdk")) {
+      const script = document.createElement("script");
+      script.id = "onesignal-web-sdk";
+      script.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+      script.defer = true;
+      script.onerror = () => {
+        script.remove();
+        finish(reject, new Error("Não foi possível carregar o OneSignal."));
+      };
+      document.head.appendChild(script);
+    }
   });
+  const guardedInitialization = initialization.catch((error) => {
+    if (oneSignalReady === guardedInitialization) oneSignalReady = null;
+    throw error;
+  });
+  oneSignalReady = guardedInitialization;
   return oneSignalReady;
+}
+
+function setOneSignalButton({ loading = false, ready = false, message = "" } = {}) {
+  const button = document.querySelector("#enable-push-notifications");
+  if (!button) return;
+  button.disabled = loading;
+  button.textContent = loading ? "Preparando notificações…" : "Ativar notificações";
+  button.title = message;
+  if (ready) button.dataset.oneSignalReady = "true";
+  else delete button.dataset.oneSignalReady;
 }
 
 function syncOneSignalIdentity() {
   oneSignalSyncQueue = oneSignalSyncQueue.catch(() => {}).then(async () => {
-    let desiredId = token() ? getUser()?.id : null;
-    if (!desiredId && !oneSignalReady) return;
-    if (desiredId && !ONESIGNAL_APP_ID) return;
+    const initialId = token() ? getUser()?.id : null;
+    if (token() && !initialId) {
+      setOneSignalButton({ message: "Entre novamente para associar sua conta às notificações." });
+      return null;
+    }
+    if (initialId) setOneSignalButton({ loading: true });
 
     try {
       const OneSignal = oneSignalReady ? await oneSignalReady : await initializeOneSignal();
-      if (!OneSignal) return;
-      desiredId = token() ? getUser()?.id : null;
+      if (!OneSignal) return null;
+      const desiredId = token() ? getUser()?.id : null;
       if (String(desiredId || "") !== String(oneSignalExternalId || "")) {
-        if (oneSignalExternalId) await OneSignal.logout();
+        if (oneSignalExternalId) {
+          await OneSignal.logout();
+          oneSignalExternalId = null;
+        }
         if (desiredId) await OneSignal.login(String(desiredId));
         oneSignalExternalId = desiredId || null;
       }
-      const button = document.querySelector("#enable-push-notifications");
-      if (button && oneSignalExternalId) button.disabled = false;
+      setOneSignalButton({ ready: !desiredId || oneSignalExternalId === String(desiredId) });
+      return OneSignal;
     } catch (error) {
       console.warn("Não foi possível sincronizar a conta com OneSignal.", error);
+      setOneSignalButton({ message: "Não foi possível conectar. Tente ativar novamente." });
+      return null;
     }
   });
   return oneSignalSyncQueue;
@@ -325,7 +366,7 @@ function notificationSettingsMarkup() {
 
 function showAutomaticPushPrompt() {
   if (!ONESIGNAL_APP_ID || !oneSignalInstance || !oneSignalInstance.Notifications.isPushSupported()) return;
-  if (Notification.permission !== "default" || sessionStorage.getItem("dabrik-push-prompt-seen")) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "default" || sessionStorage.getItem("dabrik-push-prompt-seen")) return;
   sessionStorage.setItem("dabrik-push-prompt-seen", "1");
 
   document.body.insertAdjacentHTML("beforeend", `<div class="push-prompt-backdrop" id="push-permission-prompt" role="presentation"><section class="push-prompt-card" role="dialog" aria-modal="true" aria-labelledby="push-prompt-title"><button class="push-prompt-close" type="button" aria-label="Fechar">×</button><span class="push-prompt-icon" aria-hidden="true">♧</span><h2 id="push-prompt-title">Fique por dentro das mensagens</h2><p>Ative as notificações para saber quando alguém responder suas conversas no DaBrik.</p><button class="btn-primary wide" id="push-prompt-allow" type="button">Ativar notificações</button><button class="push-prompt-later" id="push-prompt-later" type="button">Agora não</button></section></div>`);
@@ -341,31 +382,67 @@ function showAutomaticPushPrompt() {
   });
 }
 
-function enablePushNotifications(button) {
+async function enablePushNotifications(button) {
   if (!ONESIGNAL_APP_ID) return toast("As notificações ainda não foram configuradas.");
-  const OneSignal = oneSignalInstance;
-  if (!OneSignal || oneSignalExternalId !== String(getUser()?.id || "")) {
-    return toast("Aguarde a conexão das notificações e tente novamente.");
+  let currentId = token() ? getUser()?.id : null;
+  if (token() && !currentId) {
+    return toast("Não foi possível identificar sua conta. Saia e entre novamente.");
   }
-  if (!OneSignal.Notifications.isPushSupported()) {
+  if (!oneSignalInstance || (currentId && oneSignalExternalId !== String(currentId))) {
+    button.disabled = true;
+    button.textContent = "Preparando notificações…";
+    setOneSignalButton({ loading: true });
+    const synchronized = await syncOneSignalIdentity();
+    currentId = token() ? getUser()?.id : null;
+    if (!synchronized || (currentId && oneSignalExternalId !== String(currentId))) {
+      button.disabled = false;
+      button.textContent = "Ativar notificações";
+      setOneSignalButton({ message: "Não foi possível conectar. Tente novamente." });
+      toast("Não foi possível conectar as notificações. Tente novamente.");
+      return;
+    }
+  }
+
+  const OneSignal = oneSignalInstance;
+  if (!OneSignal || !OneSignal.Notifications.isPushSupported()) {
+    button.disabled = false;
+    button.textContent = "Ativar notificações";
+    setOneSignalButton({ ready: true });
     return toast("Este navegador não oferece suporte a notificações push.");
   }
-  if (Notification.permission === "denied") {
+  if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+    button.disabled = false;
+    button.textContent = "Ativar notificações";
+    setOneSignalButton({ ready: true });
     return toast("As notificações estão bloqueadas nas permissões do navegador.");
   }
+
   button.disabled = true;
-  Promise.resolve(OneSignal.Notifications.requestPermission())
-    .then(async () => {
-      if (OneSignal.Notifications.permission) {
-        await OneSignal.User.PushSubscription.optIn();
-      }
-      toast(OneSignal.User.PushSubscription.optedIn
-        ? "Notificações de mensagens ativadas neste navegador."
-        : "Não foi possível ativar as notificações.");
-      document.querySelector("#push-permission-prompt")?.remove();
-    })
-    .catch((error) => toast(error.message || "Não foi possível ativar as notificações."))
-    .finally(() => { button.disabled = false; });
+  button.textContent = "Ativando notificações…";
+  try {
+    const permissionRequest = OneSignal.Notifications.requestPermission();
+    await permissionRequest;
+    if (OneSignal.Notifications.permission) await OneSignal.User.PushSubscription.optIn();
+
+    const subscribed = Boolean(OneSignal.User.PushSubscription.optedIn);
+    button.textContent = subscribed ? "Notificações ativadas" : "Ativar notificações";
+    button.disabled = subscribed;
+    toast(subscribed
+      ? "Notificações de mensagens ativadas neste navegador."
+      : "Não foi possível confirmar a assinatura. Tente novamente.");
+    if (subscribed) document.querySelector("#push-permission-prompt")?.remove();
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Ativar notificações";
+    setOneSignalButton({ ready: true });
+    toast(error.message || "Não foi possível ativar as notificações.");
+  } finally {
+    if (button.isConnected && (button.textContent === "Ativando notificações…" || button.textContent === "Preparando notificações…")) {
+      button.disabled = false;
+      button.textContent = "Ativar notificações";
+      setOneSignalButton({ ready: true });
+    }
+  }
 }
 
 function authPage(register = false) {
