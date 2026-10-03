@@ -107,7 +107,7 @@ As tabelas `product_reports`, `conversations` e `messages` são criadas automati
 
 ## Notificações push de mensagens (OneSignal)
 
-O frontend registra o navegador no OneSignal após a pessoa clicar em **Ativar neste navegador** na Área do vendedor. O usuário é associado ao `user.id` existente da DaBrik como External ID. Quando uma mensagem nova é gravada, o backend envia uma notificação privada ao outro participante da conversa. O conteúdo da mensagem não é incluído na notificação.
+Na primeira visita de cada sessão do navegador, o frontend mostra um convite próprio do DaBrik. Ao clicar em **Ativar notificações**, o navegador apresenta o pedido nativo de permissão. O usuário é associado ao `user.id` existente da DaBrik como External ID assim que entra na conta. Quando uma mensagem nova é gravada, o backend envia uma notificação privada ao outro participante da conversa. O conteúdo da mensagem não é incluído na notificação.
 
 Para habilitar em produção:
 

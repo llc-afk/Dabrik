@@ -318,6 +318,13 @@ img { max-width: 100%; }
 .notification-settings strong { color: var(--text); }
 .notification-settings p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 640px) { .notification-settings { align-items: stretch; flex-direction: column; } }
+.push-prompt-backdrop { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(4 8 6 / 72%); backdrop-filter: blur(5px); }
+.push-prompt-card { position: relative; width: min(100%, 400px); padding: 30px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow-lg); text-align: center; }
+.push-prompt-icon { display: grid; width: 54px; height: 54px; margin: 0 auto 16px; place-items: center; border-radius: 17px; background: rgb(25 168 90 / 14%); color: var(--primary-light); font-size: 28px; }
+.push-prompt-card h2 { margin: 0; color: var(--text); font-size: 21px; }
+.push-prompt-card p { margin: 10px 0 22px; color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
+.push-prompt-close { position: absolute; top: 9px; right: 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 25px; }
+.push-prompt-later { margin-top: 13px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; }
 
 .cart-page { display: grid; grid-template-columns: minmax(0, 1fr) 290px; align-items: start; gap: 16px; padding-top: 25px; padding-bottom: 85px; }
 .cart-items { display: grid; gap: 9px; }

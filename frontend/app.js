@@ -323,6 +323,24 @@ function notificationSettingsMarkup() {
   return `<section class="content-panel notification-settings"><div><strong>Notificações de mensagens</strong><p>Receba um aviso quando alguém responder suas conversas.</p></div><button id="enable-push-notifications" class="btn-primary" disabled>Preparando notificações…</button></section>`;
 }
 
+function showAutomaticPushPrompt() {
+  if (!ONESIGNAL_APP_ID || !oneSignalInstance || !oneSignalInstance.Notifications.isPushSupported()) return;
+  if (Notification.permission !== "default" || sessionStorage.getItem("dabrik-push-prompt-seen")) return;
+  sessionStorage.setItem("dabrik-push-prompt-seen", "1");
+
+  document.body.insertAdjacentHTML("beforeend", `<div class="push-prompt-backdrop" id="push-permission-prompt" role="presentation"><section class="push-prompt-card" role="dialog" aria-modal="true" aria-labelledby="push-prompt-title"><button class="push-prompt-close" type="button" aria-label="Fechar">×</button><span class="push-prompt-icon" aria-hidden="true">♧</span><h2 id="push-prompt-title">Fique por dentro das mensagens</h2><p>Ative as notificações para saber quando alguém responder suas conversas no DaBrik.</p><button class="btn-primary wide" id="push-prompt-allow" type="button">Ativar notificações</button><button class="push-prompt-later" id="push-prompt-later" type="button">Agora não</button></section></div>`);
+
+  const close = () => document.querySelector("#push-permission-prompt")?.remove();
+  document.querySelector(".push-prompt-close")?.addEventListener("click", close);
+  document.querySelector("#push-prompt-later")?.addEventListener("click", close);
+  document.querySelector("#push-prompt-allow")?.addEventListener("click", (event) => {
+    enablePushNotifications(event.currentTarget);
+  });
+  document.querySelector("#push-permission-prompt")?.addEventListener("click", (event) => {
+    if (event.target.id === "push-permission-prompt") close();
+  });
+}
+
 function enablePushNotifications(button) {
   if (!ONESIGNAL_APP_ID) return toast("As notificações ainda não foram configuradas.");
   const OneSignal = oneSignalInstance;
@@ -344,6 +362,7 @@ function enablePushNotifications(button) {
       toast(OneSignal.User.PushSubscription.optedIn
         ? "Notificações de mensagens ativadas neste navegador."
         : "Não foi possível ativar as notificações.");
+      document.querySelector("#push-permission-prompt")?.remove();
     })
     .catch((error) => toast(error.message || "Não foi possível ativar as notificações."))
     .finally(() => { button.disabled = false; });
@@ -538,6 +557,11 @@ async function render() {
   });
   updateAccountButton();
   syncOneSignalIdentity();
+  if (ONESIGNAL_APP_ID) {
+    initializeOneSignal()
+      .then(showAutomaticPushPrompt)
+      .catch((error) => console.warn("Não foi possível inicializar notificações push.", error));
+  }
   updateCartCount();
   bindPage();
   if (path === "/mensagens" && token()) scheduleChatPolling();
